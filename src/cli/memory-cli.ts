@@ -240,6 +240,7 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
                 try {
                   await manager.sync({
                     reason: "cli",
+                    force: true,
                     progress: (syncUpdate) => {
                       update({
                         completed: syncUpdate.completed,
@@ -443,9 +444,8 @@ export function registerMemoryCli(program: Command) {
     .command("index")
     .description("Reindex memory files")
     .option("--agent <id>", "Agent id (default: default agent)")
-    .option("--force", "Force full reindex", false)
     .option("--verbose", "Verbose logging", false)
-    .action(async (opts: MemoryCommandOptions & { force?: boolean }) => {
+    .action(async (opts: MemoryCommandOptions) => {
       setVerbose(Boolean(opts.verbose));
       const cfg = loadConfig();
       const agentIds = resolveAgentIds(cfg, opts.agent);
@@ -527,7 +527,7 @@ export function registerMemoryCli(program: Command) {
                   try {
                     await manager.sync({
                       reason: "cli",
-                      force: opts.force,
+                      force: true,
                       progress: (syncUpdate) => {
                         if (syncUpdate.label) lastLabel = syncUpdate.label;
                         lastCompleted = syncUpdate.completed;
