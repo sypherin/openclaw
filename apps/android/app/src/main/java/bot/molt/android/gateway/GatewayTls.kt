@@ -62,7 +62,19 @@ fun buildGatewayTlsConfig(
   return GatewayTlsConfig(
     sslSocketFactory = context.socketFactory,
     trustManager = trustManager,
-    hostnameVerifier = HostnameVerifier { _, _ -> true },
+    // SECURITY: Only bypass hostname verification when using certificate pinning.
+    // When a fingerprint is pinned, the certificate itself is verified, making
+    // hostname verification redundant. Without pinning, use default verification.
+    hostnameVerifier = HostnameVerifier { hostname, session ->
+      if (expected != null) {
+        // Certificate is pinned by fingerprint - hostname verification is redundant
+        // since we're trusting a specific certificate, not the CA chain
+        true
+      } else {
+        // No pinning - use default hostname verification for security
+        javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier().verify(hostname, session)
+      }
+    },
   )
 }
 

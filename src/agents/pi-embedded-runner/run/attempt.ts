@@ -83,6 +83,7 @@ import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
 import { isTimeoutError } from "../../failover-error.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
+import { createRateLimitedStreamFn } from "../../llm-rate-limit-wrapper.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { detectAndLoadPromptImages } from "./images.js";
 
@@ -491,6 +492,21 @@ export async function runEmbeddedAttempt(
 
       // Force a stable streamFn reference so vitest can reliably mock @mariozechner/pi-ai.
       activeSession.agent.streamFn = streamSimple;
+
+      // SECURITY: Apply LLM rate limiting to prevent exceeding cloud provider limits
+      // This protects against token quota exhaustion and unexpected billing charges
+      activeSession.agent.streamFn = createRateLimitedStreamFn(
+        activeSession.agent.streamFn,
+        params.provider,
+        {
+          onRateLimited: (waitMs, reason) => {
+            log.warn(
+              `LLM rate limited: provider=${params.provider} reason=${reason} waitMs=${waitMs} ` +
+                `runId=${params.runId} sessionId=${params.sessionId}`,
+            );
+          },
+        },
+      );
 
       applyExtraParamsToAgent(
         activeSession.agent,

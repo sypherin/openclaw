@@ -1,9 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  SECURITY: Exclude sensitive credential and identity files from cloud backup
+  and device transfer. Private keys and authentication tokens must never be
+  extracted from the device.
+-->
 <data-extraction-rules>
   <cloud-backup>
-    <include domain="file" path="." />
+    <!-- Exclude device identity (contains private signing keys) -->
+    <exclude domain="file" path="moltbot/identity" />
+    <!-- Exclude encrypted credentials storage -->
+    <exclude domain="sharedpref" path="moltbot.node.secure.xml" />
+    <!-- Exclude any cached credentials -->
+    <exclude domain="file" path="moltbot/credentials" />
+    <!-- Allow non-sensitive settings -->
+    <include domain="file" path="moltbot/settings" />
   </cloud-backup>
   <device-transfer>
-    <include domain="file" path="." />
+    <!-- Exclude device identity - each device should have unique identity -->
+    <exclude domain="file" path="moltbot/identity" />
+    <!-- Exclude encrypted credentials - tokens are device-specific -->
+    <exclude domain="sharedpref" path="moltbot.node.secure.xml" />
+    <!-- Exclude any cached credentials -->
+    <exclude domain="file" path="moltbot/credentials" />
+    <!-- Allow non-sensitive settings for device migration -->
+    <include domain="file" path="moltbot/settings" />
   </device-transfer>
 </data-extraction-rules>

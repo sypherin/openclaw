@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  SECURITY: Exclude sensitive credential and identity files from backup.
+  Device identity contains private signing keys that should never leave the device.
+  Encrypted preferences contain gateway tokens and passwords.
+-->
 <full-backup-content>
-  <include domain="file" path="." />
+  <!-- Exclude device identity (contains private keys) -->
+  <exclude domain="file" path="moltbot/identity" />
+  <!-- Exclude encrypted credentials -->
+  <exclude domain="sharedpref" path="moltbot.node.secure.xml" />
+  <!-- Exclude any cached credentials -->
+  <exclude domain="file" path="moltbot/credentials" />
+  <!-- Allow non-sensitive app data -->
+  <include domain="file" path="moltbot/settings" />
 </full-backup-content>

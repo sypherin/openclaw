@@ -301,6 +301,46 @@ export function createGatewayHttpServer(opts: {
   return httpServer;
 }
 
+/**
+ * SECURITY: Validate WebSocket origin to prevent Cross-Site WebSocket Hijacking (CSWSH).
+ * Returns true if the origin is allowed, false otherwise.
+ */
+function isValidWebSocketOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  // No origin header - could be non-browser client (CLI, native app)
+  // Allow these as they're not vulnerable to CSWSH
+  if (!origin) return true;
+
+  try {
+    const originUrl = new URL(origin);
+    const host = req.headers.host ?? "";
+    const hostName = host.split(":")[0] ?? "";
+
+    // Allow same-origin requests
+    if (originUrl.hostname === hostName) return true;
+
+    // Allow localhost/loopback origins for local development
+    const loopbackHosts = ["localhost", "127.0.0.1", "[::1]", "::1"];
+    if (loopbackHosts.includes(originUrl.hostname)) return true;
+
+    // Allow Tailscale domains
+    if (originUrl.hostname.endsWith(".ts.net")) return true;
+
+    // Allow internal moltbot domains
+    if (originUrl.hostname.endsWith(".moltbot.internal")) return true;
+    if (originUrl.hostname === "moltbot.internal") return true;
+
+    // Allow file:// protocol (local apps/extensions)
+    if (originUrl.protocol === "file:") return true;
+
+    // Reject all other origins
+    return false;
+  } catch {
+    // Invalid origin URL - reject for safety
+    return false;
+  }
+}
+
 export function attachGatewayUpgradeHandler(opts: {
   httpServer: HttpServer;
   wss: WebSocketServer;
@@ -308,6 +348,13 @@ export function attachGatewayUpgradeHandler(opts: {
 }) {
   const { httpServer, wss, canvasHost } = opts;
   httpServer.on("upgrade", (req, socket, head) => {
+    // SECURITY: Validate origin to prevent Cross-Site WebSocket Hijacking (CSWSH)
+    if (!isValidWebSocketOrigin(req)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
     if (canvasHost?.handleUpgrade(req, socket, head)) return;
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req);

@@ -3,6 +3,8 @@ import type { IncomingMessage } from "node:http";
 import type { GatewayAuthConfig, GatewayTailscaleMode } from "../config/config.js";
 import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
 import { isTrustedProxyAddress, parseForwardedForClientIp, resolveGatewayClientIp } from "./net.js";
+import { checkAuthRateLimit, recordAuthFailure, recordAuthSuccess } from "./auth-rate-limit.js";
+
 export type ResolvedGatewayAuthMode = "token" | "password";
 
 export type ResolvedGatewayAuth = {
@@ -17,6 +19,8 @@ export type GatewayAuthResult = {
   method?: "token" | "password" | "tailscale" | "device-token";
   user?: string;
   reason?: string;
+  /** If rate limited, how long to wait before retrying (ms) */
+  retryAfterMs?: number;
 };
 
 type ConnectAuth = {
@@ -32,9 +36,28 @@ type TailscaleUser = {
 
 type TailscaleWhoisLookup = (ip: string) => Promise<TailscaleWhoisIdentity | null>;
 
+/**
+ * SECURITY: Constant-time string comparison that doesn't leak length information.
+ * Both the content and length comparison are done in constant time to prevent
+ * timing attacks that could be used to guess token/password values.
+ */
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  // Pad both buffers to the same length to ensure constant-time comparison
+  // regardless of actual string lengths
+  const maxLen = Math.max(bufA.length, bufB.length, 1);
+  const paddedA = Buffer.alloc(maxLen);
+  const paddedB = Buffer.alloc(maxLen);
+  bufA.copy(paddedA);
+  bufB.copy(paddedB);
+  // XOR the lengths and check equality - this is constant time
+  // because we're comparing fixed-size integers
+  const lengthsMatch = (bufA.length ^ bufB.length) === 0;
+  // Compare content in constant time
+  const contentMatches = timingSafeEqual(paddedA, paddedB);
+  // Both must be true - computed without short-circuit to maintain constant time
+  return lengthsMatch && contentMatches;
 }
 
 function normalizeLogin(login: string): string {
@@ -202,10 +225,26 @@ export async function authorizeGatewayConnect(params: {
   req?: IncomingMessage;
   trustedProxies?: string[];
   tailscaleWhois?: TailscaleWhoisLookup;
+  /** Skip rate limiting (e.g., for local direct connections) */
+  skipRateLimit?: boolean;
 }): Promise<GatewayAuthResult> {
   const { auth, connectAuth, req, trustedProxies } = params;
   const tailscaleWhois = params.tailscaleWhois ?? readTailscaleWhoisIdentity;
   const localDirect = isLocalDirectRequest(req, trustedProxies);
+
+  // SECURITY: Check rate limiting for non-local connections
+  const clientIp = resolveRequestClientIp(req, trustedProxies) ?? "unknown";
+  const skipRateLimit = params.skipRateLimit ?? localDirect;
+  if (!skipRateLimit) {
+    const rateLimit = checkAuthRateLimit(clientIp);
+    if (!rateLimit.allowed) {
+      return {
+        ok: false,
+        reason: "rate_limited",
+        retryAfterMs: rateLimit.retryAfterMs,
+      };
+    }
+  }
 
   if (auth.allowTailscale && !localDirect) {
     const tailscaleCheck = await resolveVerifiedTailscaleUser({
@@ -223,30 +262,39 @@ export async function authorizeGatewayConnect(params: {
 
   if (auth.mode === "token") {
     if (!auth.token) {
+      if (!skipRateLimit) recordAuthFailure(clientIp);
       return { ok: false, reason: "token_missing_config" };
     }
     if (!connectAuth?.token) {
+      if (!skipRateLimit) recordAuthFailure(clientIp);
       return { ok: false, reason: "token_missing" };
     }
     if (!safeEqual(connectAuth.token, auth.token)) {
+      if (!skipRateLimit) recordAuthFailure(clientIp);
       return { ok: false, reason: "token_mismatch" };
     }
+    if (!skipRateLimit) recordAuthSuccess(clientIp);
     return { ok: true, method: "token" };
   }
 
   if (auth.mode === "password") {
     const password = connectAuth?.password;
     if (!auth.password) {
+      if (!skipRateLimit) recordAuthFailure(clientIp);
       return { ok: false, reason: "password_missing_config" };
     }
     if (!password) {
+      if (!skipRateLimit) recordAuthFailure(clientIp);
       return { ok: false, reason: "password_missing" };
     }
     if (!safeEqual(password, auth.password)) {
+      if (!skipRateLimit) recordAuthFailure(clientIp);
       return { ok: false, reason: "password_mismatch" };
     }
+    if (!skipRateLimit) recordAuthSuccess(clientIp);
     return { ok: true, method: "password" };
   }
 
+  if (!skipRateLimit) recordAuthFailure(clientIp);
   return { ok: false, reason: "unauthorized" };
 }

@@ -31,6 +31,13 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     val isDebuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     WebView.setWebContentsDebuggingEnabled(isDebuggable)
+
+    // SECURITY: Prevent screenshots and screen recording in release builds.
+    // This protects sensitive content (credentials, conversations, canvas) from capture.
+    if (!isDebuggable) {
+      window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
     applyImmersiveMode()
     requestDiscoveryPermissionsIfNeeded()
     requestNotificationPermissionIfNeeded()
