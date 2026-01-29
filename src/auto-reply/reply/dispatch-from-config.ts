@@ -1,5 +1,6 @@
 import type { MoltbotConfig } from "../../config/config.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { normalizeChatType } from "../../channels/chat-type.js";
 import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
@@ -196,6 +197,8 @@ export async function dispatchReplyFromConfig(params: {
   const shouldRouteToOriginating =
     isRoutableChannel(originatingChannel) && originatingTo && originatingChannel !== currentSurface;
   const ttsChannel = shouldRouteToOriginating ? originatingChannel : currentSurface;
+  const normalizedChatType = normalizeChatType(ctx.ChatType);
+  const shouldEmitToolSummaries = normalizedChatType === "direct" && ctx.CommandSource !== "native";
 
   /**
    * Helper to send a payload via route-reply (async).
@@ -276,27 +279,26 @@ export async function dispatchReplyFromConfig(params: {
       ctx,
       {
         ...params.replyOptions,
-        onToolResult:
-          ctx.ChatType !== "group" && ctx.CommandSource !== "native"
-            ? (payload: ReplyPayload) => {
-                const run = async () => {
-                  const ttsPayload = await maybeApplyTtsToPayload({
-                    payload,
-                    cfg,
-                    channel: ttsChannel,
-                    kind: "tool",
-                    inboundAudio,
-                    ttsAuto: sessionTtsAuto,
-                  });
-                  if (shouldRouteToOriginating) {
-                    await sendPayloadAsync(ttsPayload, undefined, false);
-                  } else {
-                    dispatcher.sendToolResult(ttsPayload);
-                  }
-                };
-                return run();
-              }
-            : undefined,
+        onToolResult: shouldEmitToolSummaries
+          ? (payload: ReplyPayload) => {
+              const run = async () => {
+                const ttsPayload = await maybeApplyTtsToPayload({
+                  payload,
+                  cfg,
+                  channel: ttsChannel,
+                  kind: "tool",
+                  inboundAudio,
+                  ttsAuto: sessionTtsAuto,
+                });
+                if (shouldRouteToOriginating) {
+                  await sendPayloadAsync(ttsPayload, undefined, false);
+                } else {
+                  dispatcher.sendToolResult(ttsPayload);
+                }
+              };
+              return run();
+            }
+          : undefined,
         onBlockReply: (payload: ReplyPayload, context) => {
           const run = async () => {
             // Accumulate block text for TTS generation after streaming

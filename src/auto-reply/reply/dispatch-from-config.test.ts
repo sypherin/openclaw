@@ -154,7 +154,7 @@ describe("dispatchReplyFromConfig", () => {
     const replyResolver = async (
       _ctx: MsgContext,
       opts: GetReplyOptions | undefined,
-      _cfg: ClawdbotConfig,
+      _cfg: MoltbotConfig,
     ) => {
       expect(opts?.onToolResult).toBeDefined();
       expect(typeof opts?.onToolResult).toBe("function");
@@ -170,11 +170,36 @@ describe("dispatchReplyFromConfig", () => {
       handled: false,
       aborted: false,
     });
-    const cfg = {} as ClawdbotConfig;
+    const cfg = {} as MoltbotConfig;
     const dispatcher = createDispatcher();
     const ctx = buildTestCtx({
       Provider: "telegram",
       ChatType: "group",
+    });
+
+    const replyResolver = async (
+      _ctx: MsgContext,
+      opts: GetReplyOptions | undefined,
+      _cfg: MoltbotConfig,
+    ) => {
+      expect(opts?.onToolResult).toBeUndefined();
+      return { text: "hi" } satisfies ReplyPayload;
+    };
+
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not provide onToolResult in channel sessions", async () => {
+    mocks.tryFastAbortFromMessage.mockResolvedValue({
+      handled: false,
+      aborted: false,
+    });
+    const cfg = {} as MoltbotConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "slack",
+      ChatType: "channel",
     });
 
     const replyResolver = async (
@@ -195,7 +220,7 @@ describe("dispatchReplyFromConfig", () => {
       handled: false,
       aborted: false,
     });
-    const cfg = {} as ClawdbotConfig;
+    const cfg = {} as MoltbotConfig;
     const dispatcher = createDispatcher();
     const ctx = buildTestCtx({
       Provider: "telegram",
@@ -205,7 +230,7 @@ describe("dispatchReplyFromConfig", () => {
     const replyResolver = async (
       _ctx: MsgContext,
       opts: GetReplyOptions | undefined,
-      _cfg: ClawdbotConfig,
+      _cfg: MoltbotConfig,
     ) => {
       // Simulate tool result emission
       await opts?.onToolResult?.({ text: "🔧 exec: ls" });
@@ -224,7 +249,7 @@ describe("dispatchReplyFromConfig", () => {
       handled: false,
       aborted: false,
     });
-    const cfg = {} as ClawdbotConfig;
+    const cfg = {} as MoltbotConfig;
     const dispatcher = createDispatcher();
     const ctx = buildTestCtx({
       Provider: "telegram",
@@ -235,7 +260,7 @@ describe("dispatchReplyFromConfig", () => {
     const replyResolver = async (
       _ctx: MsgContext,
       opts: GetReplyOptions | undefined,
-      _cfg: ClawdbotConfig,
+      _cfg: MoltbotConfig,
     ) => {
       expect(opts?.onToolResult).toBeUndefined();
       return { text: "hi" } satisfies ReplyPayload;
