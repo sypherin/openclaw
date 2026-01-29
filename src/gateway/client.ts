@@ -110,8 +110,20 @@ export class GatewayClient {
       maxPayload: 25 * 1024 * 1024,
     };
     if (url.startsWith("wss://") && this.opts.tlsFingerprint) {
-      wsOptions.rejectUnauthorized = false;
-      wsOptions.checkServerIdentity = ((_host: string, cert: CertMeta) => {
+      // SECURITY: Keep rejectUnauthorized enabled for standard TLS validation.
+      // Add fingerprint verification as an additional security layer, not a replacement.
+      // This ensures that even if fingerprint verification fails to execute properly,
+      // standard certificate chain validation still protects the connection.
+      wsOptions.rejectUnauthorized = true;
+      wsOptions.checkServerIdentity = ((host: string, cert: CertMeta) => {
+        // First, perform standard hostname verification
+        const tls = require("node:tls") as typeof import("node:tls");
+        const defaultError = tls.checkServerIdentity(
+          host,
+          cert as unknown as Parameters<typeof tls.checkServerIdentity>[1],
+        );
+        // For self-signed certs with pinning, we allow hostname mismatch if fingerprint matches
+        // since the fingerprint uniquely identifies the certificate
         const fingerprintValue =
           typeof cert === "object" && cert && "fingerprint256" in cert
             ? ((cert as { fingerprint256?: string }).fingerprint256 ?? "")
@@ -128,6 +140,13 @@ export class GatewayClient {
         }
         if (fingerprint !== expected) {
           return new Error("gateway tls fingerprint mismatch");
+        }
+        // Fingerprint matches - this is a pinned certificate, hostname verification
+        // is less critical since we trust this specific certificate
+        if (defaultError) {
+          logDebug(
+            `gateway tls hostname mismatch ignored due to fingerprint pinning: ${defaultError.message}`,
+          );
         }
         return undefined;
       }) as any;

@@ -1,4 +1,5 @@
 import type { BrowserFormField } from "./client-actions-core.js";
+import { assertBrowserEvalAllowed } from "./eval-security.js";
 import {
   ensurePageState,
   getPageForTargetId,
@@ -216,6 +217,15 @@ export async function evaluateViaPlaywright(opts: {
 }): Promise<unknown> {
   const fnText = String(opts.fn ?? "").trim();
   if (!fnText) throw new Error("function is required");
+
+  // SECURITY: Validate the JavaScript code before execution
+  // This blocks dangerous patterns like credential theft, network exfiltration, etc.
+  assertBrowserEvalAllowed({
+    code: fnText,
+    targetId: opts.targetId,
+    ref: opts.ref,
+  });
+
   const page = await getPageForTargetId(opts);
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
@@ -326,6 +336,8 @@ export async function waitForViaPlaywright(opts: {
   if (opts.fn) {
     const fn = String(opts.fn).trim();
     if (fn) {
+      // SECURITY: Validate wait function before execution
+      assertBrowserEvalAllowed({ code: fn });
       await page.waitForFunction(fn, { timeout });
     }
   }

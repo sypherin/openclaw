@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { detectMime, extensionForMime } from "./mime.js";
+import { checkConnection } from "../infra/net/connection-allowlist.js";
 
 type FetchMediaResult = {
   buffer: Buffer;
@@ -68,6 +69,17 @@ export async function fetchRemoteMedia(options: FetchMediaOptions): Promise<Fetc
   const fetcher: FetchLike | undefined = fetchImpl ?? globalThis.fetch;
   if (!fetcher) {
     throw new Error("fetch is not available");
+  }
+
+  // SECURITY: Check connection allowlist before making request
+  // This prevents fetching from unauthorized external sources
+  const connectionCheck = checkConnection(url, "media-fetch");
+  if (!connectionCheck.allowed) {
+    throw new MediaFetchError(
+      "fetch_failed",
+      `Connection to ${connectionCheck.domain} blocked: ${connectionCheck.reason}. ` +
+        `Add to allowlist if this media source is expected.`,
+    );
   }
 
   let res: Response;

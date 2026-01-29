@@ -1,12 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<network-security-config xmlns:tools="http://schemas.android.com/tools">
-  <!-- This app is primarily used on a trusted tailnet; allow cleartext for IP-based endpoints too. -->
-  <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
-  <!-- Allow HTTP for tailnet/local dev endpoints (e.g. canvas/background web). -->
+<!--
+  SECURITY: Network security configuration with restricted cleartext traffic.
+  Only allow cleartext (HTTP) for localhost and specific trusted internal domains.
+  All other traffic must use HTTPS/TLS.
+-->
+<network-security-config>
+  <!-- Default: Require encrypted connections for all domains -->
+  <base-config cleartextTrafficPermitted="false">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+
+  <!-- Allow cleartext for localhost/loopback only (local development) -->
   <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="true">moltbot.internal</domain>
+    <domain includeSubdomains="false">localhost</domain>
+    <domain includeSubdomains="false">127.0.0.1</domain>
+    <domain includeSubdomains="false">[::1]</domain>
   </domain-config>
+
+  <!-- Allow cleartext for Tailscale internal domains (trusted network) -->
   <domain-config cleartextTrafficPermitted="true">
     <domain includeSubdomains="true">ts.net</domain>
+  </domain-config>
+
+  <!-- Allow cleartext for internal moltbot domains (trusted network) -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">moltbot.internal</domain>
   </domain-config>
 </network-security-config>
