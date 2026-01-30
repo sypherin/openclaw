@@ -484,6 +484,14 @@ export async function runEmbeddedPiAgent(
               promptFailoverReason !== "timeout" &&
               (await advanceAuthProfile())
             ) {
+              if (params.onBlockReply) {
+                const reason = promptFailoverReason ?? "error";
+                Promise.resolve(
+                  params.onBlockReply({
+                    text: `[${provider} ${reason} — retrying with another account]`,
+                  }),
+                ).catch(() => {});
+              }
               continue;
             }
             const fallbackThinking = pickFallbackThinkingLevel({
@@ -578,7 +586,17 @@ export async function runEmbeddedPiAgent(
             }
 
             const rotated = await advanceAuthProfile();
-            if (rotated) continue;
+            if (rotated) {
+              if (params.onBlockReply) {
+                const reason = assistantFailoverReason ?? (timedOut ? "timeout" : "error");
+                Promise.resolve(
+                  params.onBlockReply({
+                    text: `[${provider} ${reason} — retrying with another account]`,
+                  }),
+                ).catch(() => {});
+              }
+              continue;
+            }
 
             if (fallbackConfigured) {
               // Prefer formatted error message (user-friendly) over raw errorMessage

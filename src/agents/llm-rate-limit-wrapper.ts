@@ -1,227 +1,125 @@
 /**
- * SECURITY: LLM Rate Limiter Integration
+ * LLM Rate Limit Wrapper — Circuit Breaker
  *
- * Wraps the pi-ai stream function to apply rate limiting before making API calls.
- * This prevents exceeding cloud provider rate limits and protects against:
- * 1. Token quota exhaustion (429 errors)
- * 2. Unexpected billing charges
- * 3. Denial of service from runaway requests
+ * Simple cooldown-based circuit breaker. When a provider returns a rate limit
+ * error (429), we record a cooldown timestamp. Subsequent requests to that
+ * provider are rejected immediately (no API call, no token waste) until the
+ * cooldown expires. The existing failover system handles switching providers.
+ *
+ * No retry loops. No token estimation. No pre-emptive blocking.
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import {
-  type LlmProvider,
-  type UsageRecord,
-  checkLlmRateLimit,
-  reserveLlmCapacity,
-  releaseLlmCapacity,
-  getLlmRateLimiter,
-} from "./llm-rate-limiter.js";
-
-/**
- * Type for pi-ai stream function signature.
- * Uses a flexible type to accommodate the complex generic types in pi-ai.
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StreamFn = (...args: any[]) => any;
 
+/** Per-provider cooldown timestamps (epoch ms when provider becomes available). */
+const providerCooldowns = new Map<string, number>();
+
+/** Default cooldown when we can't parse a Retry-After value. */
+const DEFAULT_COOLDOWN_MS = 30_000;
+
 /**
- * Map pi-ai provider string to our LlmProvider type.
+ * Check if a provider is currently cooling down.
+ * Returns remaining cooldown ms, or 0 if available.
  */
-export function mapToLlmProvider(provider: string): LlmProvider {
-  const normalized = provider.toLowerCase().trim();
-
-  // Direct mappings
-  const providerMap: Record<string, LlmProvider> = {
-    anthropic: "anthropic",
-    openai: "openai",
-    google: "google",
-    bedrock: "bedrock",
-    "github-copilot": "github-copilot",
-    minimax: "minimax",
-    moonshot: "moonshot",
-    kimi: "kimi",
-    qwen: "qwen",
-    venice: "venice",
-    ollama: "ollama",
-  };
-
-  // Check direct mappings
-  if (providerMap[normalized]) {
-    return providerMap[normalized];
+export function getProviderCooldownMs(provider: string): number {
+  const until = providerCooldowns.get(provider);
+  if (!until) return 0;
+  const remaining = until - Date.now();
+  if (remaining <= 0) {
+    providerCooldowns.delete(provider);
+    return 0;
   }
-
-  // Handle variants
-  if (normalized.includes("anthropic") || normalized.includes("claude")) {
-    return "anthropic";
-  }
-  if (normalized.includes("openai") || normalized.includes("gpt")) {
-    return "openai";
-  }
-  if (
-    normalized.includes("google") ||
-    normalized.includes("gemini") ||
-    normalized.includes("vertex")
-  ) {
-    return "google";
-  }
-  if (normalized.includes("bedrock") || normalized.includes("amazon")) {
-    return "bedrock";
-  }
-  if (normalized.includes("copilot") || normalized.includes("github")) {
-    return "github-copilot";
-  }
-  if (normalized.includes("ollama") || normalized.includes("local")) {
-    return "ollama";
-  }
-
-  return "custom";
+  return remaining;
 }
 
 /**
- * Estimate token count from a prompt string.
- * Uses a simple heuristic: ~4 characters per token on average.
+ * Mark a provider as cooling down after a rate limit error.
  */
-export function estimateTokens(prompt: unknown): number {
-  if (typeof prompt === "string") {
-    return Math.ceil(prompt.length / 4);
-  }
-  if (Array.isArray(prompt)) {
-    return prompt.reduce((acc, item) => {
-      if (typeof item === "string") {
-        return acc + Math.ceil(item.length / 4);
-      }
-      if (item && typeof item === "object" && "text" in item) {
-        const text = (item as Record<string, unknown>).text;
-        return acc + Math.ceil((typeof text === "string" ? text : "").length / 4);
-      }
-      // Images count as ~1000 tokens
-      if (item && typeof item === "object" && "data" in item) {
-        return acc + 1000;
-      }
-      return acc + 100; // Default for unknown content
-    }, 0);
-  }
-  return 1000; // Default estimate for unknown format
+export function setProviderCooldown(provider: string, cooldownMs: number): void {
+  providerCooldowns.set(provider, Date.now() + cooldownMs);
 }
 
 /**
- * Estimate tokens from an array of messages.
+ * Clear cooldown for a provider (e.g. on successful request).
  */
-export function estimateMessagesTokens(messages: AgentMessage[]): number {
-  return messages.reduce((acc, msg) => {
-    // Check if the message has a content property (not all AgentMessage types do)
-    if ("content" in msg && msg.content !== undefined) {
-      if (typeof msg.content === "string") {
-        return acc + estimateTokens(msg.content);
-      }
-      if (Array.isArray(msg.content)) {
-        return acc + estimateTokens(msg.content);
-      }
-    }
-    return acc + 100;
-  }, 0);
+export function clearProviderCooldown(provider: string): void {
+  providerCooldowns.delete(provider);
+}
+
+/**
+ * Extract cooldown duration from an error message.
+ * Looks for patterns like "Retry after 30s" or "retry_after: 60".
+ */
+function parseCooldownFromError(errMsg: string): number {
+  const match = errMsg.match(/retry[_ ]?after[:\s]*(\d+)/i);
+  if (match) {
+    const seconds = parseInt(match[1], 10);
+    if (seconds > 0 && seconds < 600) return seconds * 1000;
+  }
+  return DEFAULT_COOLDOWN_MS;
+}
+
+function isRateLimitError(errMsg: string): boolean {
+  return /rate[_ ]?limit|too many requests|\b429\b|quota|resource[_ ]?exhausted/i.test(errMsg);
 }
 
 type RateLimitWrapperOptions = {
-  /** The provider string from pi-ai */
   provider: string;
-  /** Callback when rate limited */
   onRateLimited?: (waitMs: number, reason: string) => void;
-  /** Callback when request starts */
   onRequestStart?: () => void;
-  /** Callback when request ends */
-  onRequestEnd?: (success: boolean, tokens?: number) => void;
+  onRequestEnd?: (success: boolean) => void;
 };
 
 /**
- * Wrap a pi-ai stream function with rate limiting.
+ * Wrap a stream function with circuit breaker protection.
  *
- * This wrapper performs a synchronous rate limit check before calling the stream function.
- * If the rate limit is exceeded, it throws an error immediately.
+ * - If the provider is cooling down → throw immediately (no API call)
+ * - If the API returns a rate limit error → record cooldown, then re-throw
+ * - On success → clear any cooldown
  */
 export function wrapStreamFnWithRateLimit(
   streamFn: StreamFn,
   options: RateLimitWrapperOptions,
 ): StreamFn {
-  const llmProvider = mapToLlmProvider(options.provider);
+  const provider = options.provider;
 
-  return async function rateLimitedStreamFn(
+  return function circuitBreakerStreamFn(
     model: unknown,
     context: unknown,
     opts?: unknown,
-  ): Promise<unknown> {
-    // Extract messages from context for token estimation
-    const contextObj = context as { messages?: AgentMessage[] } | AgentMessage[];
-    const messages = Array.isArray(contextObj) ? contextObj : (contextObj?.messages ?? []);
-
-    // Estimate tokens for this request
-    const estimatedTokens = estimateMessagesTokens(messages);
-
-    // Add buffer for expected response
-    const estimatedWithResponse = estimatedTokens + 2000;
-
-    // Check rate limit — if blocked, notify user and sleep/retry instead of throwing
-    const maxRetries = 5;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const checkResult = checkLlmRateLimit(llmProvider, estimatedWithResponse);
-      if (checkResult.allowed) break;
-
-      const waitMs = checkResult.waitMs ?? 5000;
-      const reason = checkResult.reason ?? "rate_limited";
-
+  ): unknown {
+    // Circuit breaker check — if cooling down, fail fast
+    const cooldownMs = getProviderCooldownMs(provider);
+    if (cooldownMs > 0) {
       try {
-        options.onRateLimited?.(waitMs, reason);
+        options.onRateLimited?.(cooldownMs, "provider_cooling_down");
       } catch {
-        // Notification failure must not block the retry loop
+        // ignore notification errors
       }
-
-      // Sleep and retry — don't use the queue, just wait directly
-      await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 30000)));
+      throw new Error(
+        `LLM API rate limited for ${provider}: cooling down (${Math.ceil(cooldownMs / 1000)}s remaining).`,
+      );
     }
-    // After retries, proceed regardless — let the real API handle final rate limiting
 
-    // Reserve capacity
-    reserveLlmCapacity(llmProvider, estimatedWithResponse);
     options.onRequestStart?.();
 
-    let success = false;
-    let errorType: UsageRecord["errorType"] | undefined;
-
     try {
-      // Call the underlying stream function
       const result = streamFn(model, context, opts);
-      success = true;
+      // Success — clear any lingering cooldown
+      clearProviderCooldown(provider);
+      options.onRequestEnd?.(true);
       return result;
     } catch (err) {
-      success = false;
+      const errMsg = err instanceof Error ? err.message : String(err);
 
-      // Determine error type for backoff handling
-      const errMsg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
-      if (errMsg.includes("rate") || errMsg.includes("429") || errMsg.includes("quota")) {
-        errorType = "rate_limit";
-      } else if (errMsg.includes("auth") || errMsg.includes("401") || errMsg.includes("403")) {
-        errorType = "auth";
-      } else if (errMsg.includes("billing") || errMsg.includes("payment")) {
-        errorType = "billing";
-      } else if (errMsg.includes("timeout") || errMsg.includes("timed out")) {
-        errorType = "timeout";
-      } else {
-        errorType = "other";
+      if (isRateLimitError(errMsg)) {
+        const cooldown = parseCooldownFromError(errMsg);
+        setProviderCooldown(provider, cooldown);
       }
 
+      options.onRequestEnd?.(false);
       throw err;
-    } finally {
-      // Release capacity and record usage
-      // Note: For streaming, actual tokens are estimated since we don't wait for completion
-      releaseLlmCapacity(
-        llmProvider,
-        estimatedWithResponse,
-        estimatedWithResponse,
-        success,
-        errorType,
-      );
-      options.onRequestEnd?.(success, estimatedWithResponse);
     }
   };
 }
@@ -235,7 +133,7 @@ export function createRateLimitedStreamFn(
   callbacks?: {
     onRateLimited?: (waitMs: number, reason: string) => void;
     onRequestStart?: () => void;
-    onRequestEnd?: (success: boolean, tokens?: number) => void;
+    onRequestEnd?: (success: boolean) => void;
   },
 ): StreamFn {
   return wrapStreamFnWithRateLimit(streamFn, {
@@ -244,16 +142,17 @@ export function createRateLimitedStreamFn(
   });
 }
 
-/**
- * Get rate limiter statistics for monitoring.
- */
-export function getRateLimiterStats() {
-  return getLlmRateLimiter().getStats();
+// Re-export for compatibility with existing imports
+export function mapToLlmProvider(provider: string): string {
+  return provider.toLowerCase().trim();
 }
-
-/**
- * Get usage history for auditing.
- */
-export function getRateLimiterUsageHistory(limit = 100) {
-  return getLlmRateLimiter().getUsageHistory(limit);
+export function getRateLimiterStats() {
+  const stats: Record<string, { cooldownMs: number }> = {};
+  for (const [provider, until] of providerCooldowns) {
+    stats[provider] = { cooldownMs: Math.max(0, until - Date.now()) };
+  }
+  return stats;
+}
+export function getRateLimiterUsageHistory() {
+  return [];
 }
