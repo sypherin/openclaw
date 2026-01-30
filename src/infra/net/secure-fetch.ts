@@ -12,7 +12,6 @@
 
 import { checkConnection, getConnectionAllowlist } from "./connection-allowlist.js";
 import {
-  assertPublicHostname,
   resolvePinnedHostname,
   createPinnedDispatcher,
   closeDispatcher,
