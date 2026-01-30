@@ -504,6 +504,15 @@ export async function runEmbeddedAttempt(
               `LLM rate limited: provider=${params.provider} reason=${reason} waitMs=${waitMs} ` +
                 `runId=${params.runId} sessionId=${params.sessionId}`,
             );
+            if (params.onBlockReply && waitMs > 0) {
+              const waitSec = Math.ceil(waitMs / 1000);
+              // Fire-and-forget with error catch so notification failure never crashes
+              Promise.resolve(
+                params.onBlockReply({
+                  text: `[Rate limited — retrying in ${waitSec}s, hang tight]`,
+                }),
+              ).catch(() => {});
+            }
           },
         },
       );

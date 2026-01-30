@@ -5,27 +5,10 @@
   All other traffic must use HTTPS/TLS.
 -->
 <network-security-config>
-  <!-- Default: Require encrypted connections for all domains -->
-  <base-config cleartextTrafficPermitted="false">
+  <!-- Allow cleartext for LAN/local gateway connections (debug build) -->
+  <base-config cleartextTrafficPermitted="true">
     <trust-anchors>
       <certificates src="system" />
     </trust-anchors>
   </base-config>
-
-  <!-- Allow cleartext for localhost/loopback only (local development) -->
-  <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="false">localhost</domain>
-    <domain includeSubdomains="false">127.0.0.1</domain>
-    <domain includeSubdomains="false">[::1]</domain>
-  </domain-config>
-
-  <!-- Allow cleartext for Tailscale internal domains (trusted network) -->
-  <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="true">ts.net</domain>
-  </domain-config>
-
-  <!-- Allow cleartext for internal moltbot domains (trusted network) -->
-  <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="true">moltbot.internal</domain>
-  </domain-config>
 </network-security-config>

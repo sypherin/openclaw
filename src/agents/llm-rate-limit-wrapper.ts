@@ -16,6 +16,7 @@ import {
   reserveLlmCapacity,
   releaseLlmCapacity,
   getLlmRateLimiter,
+  waitForLlmCapacity,
 } from "./llm-rate-limiter.js";
 
 /**
@@ -145,7 +146,11 @@ export function wrapStreamFnWithRateLimit(
 ): StreamFn {
   const llmProvider = mapToLlmProvider(options.provider);
 
-  return function rateLimitedStreamFn(model: unknown, context: unknown, opts?: unknown): unknown {
+  return async function rateLimitedStreamFn(
+    model: unknown,
+    context: unknown,
+    opts?: unknown,
+  ): Promise<unknown> {
     // Extract messages from context for token estimation
     const contextObj = context as { messages?: AgentMessage[] } | AgentMessage[];
     const messages = Array.isArray(contextObj) ? contextObj : (contextObj?.messages ?? []);
@@ -156,19 +161,25 @@ export function wrapStreamFnWithRateLimit(
     // Add buffer for expected response
     const estimatedWithResponse = estimatedTokens + 2000;
 
-    // Synchronous rate limit check
-    const checkResult = checkLlmRateLimit(llmProvider, estimatedWithResponse);
-    if (!checkResult.allowed) {
-      const waitMs = checkResult.waitMs ?? 0;
+    // Check rate limit — if blocked, notify user and sleep/retry instead of throwing
+    const maxRetries = 5;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const checkResult = checkLlmRateLimit(llmProvider, estimatedWithResponse);
+      if (checkResult.allowed) break;
+
+      const waitMs = checkResult.waitMs ?? 5000;
       const reason = checkResult.reason ?? "rate_limited";
 
-      options.onRateLimited?.(waitMs, reason);
+      try {
+        options.onRateLimited?.(waitMs, reason);
+      } catch {
+        // Notification failure must not block the retry loop
+      }
 
-      throw new Error(
-        `LLM API rate limited for ${options.provider}: ${reason}. ` +
-          (waitMs > 0 ? `Retry after ${Math.ceil(waitMs / 1000)}s.` : ""),
-      );
+      // Sleep and retry — don't use the queue, just wait directly
+      await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 30000)));
     }
+    // After retries, proceed regardless — let the real API handle final rate limiting
 
     // Reserve capacity
     reserveLlmCapacity(llmProvider, estimatedWithResponse);

@@ -99,8 +99,8 @@ export type UsageRecord = {
 const DEFAULT_PROVIDER_LIMITS: Record<LlmProvider, RateLimitConfig> = {
   anthropic: {
     requestsPerMinute: 50,
-    tokensPerMinute: 40000,
-    tokensPerDay: 1000000,
+    tokensPerMinute: 30000,
+    tokensPerDay: 5000000,
     maxConcurrent: 5,
     backoffBaseMs: 1000,
     backoffMaxMs: 60000,
