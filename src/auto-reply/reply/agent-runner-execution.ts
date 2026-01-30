@@ -143,6 +143,18 @@ export async function runAgentTurnWithFallback(params: {
           params.followupRun.run.config,
           resolveAgentIdFromSessionKey(params.followupRun.run.sessionKey),
         ),
+        onError: async (attempt) => {
+          if (params.opts?.onBlockReply) {
+            const label = `${attempt.provider}/${attempt.model}`;
+            const remaining = attempt.total - attempt.attempt;
+            const hint = remaining > 0 ? ` — trying next model` : "";
+            Promise.resolve(
+              params.opts.onBlockReply({
+                text: `[${label} unavailable${hint}]`,
+              }),
+            ).catch(() => {});
+          }
+        },
         run: (provider, model) => {
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.

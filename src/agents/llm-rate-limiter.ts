@@ -104,7 +104,7 @@ const DEFAULT_PROVIDER_LIMITS: Record<LlmProvider, RateLimitConfig> = {
     maxConcurrent: 5,
     backoffBaseMs: 1000,
     backoffMaxMs: 60000,
-    enabled: true,
+    enabled: false,
   },
   openai: {
     requestsPerMinute: 60,
@@ -113,7 +113,7 @@ const DEFAULT_PROVIDER_LIMITS: Record<LlmProvider, RateLimitConfig> = {
     maxConcurrent: 10,
     backoffBaseMs: 1000,
     backoffMaxMs: 60000,
-    enabled: true,
+    enabled: false,
   },
   google: {
     requestsPerMinute: 60,
@@ -122,7 +122,7 @@ const DEFAULT_PROVIDER_LIMITS: Record<LlmProvider, RateLimitConfig> = {
     maxConcurrent: 5,
     backoffBaseMs: 1000,
     backoffMaxMs: 60000,
-    enabled: true,
+    enabled: false,
   },
   bedrock: {
     requestsPerMinute: 50,
