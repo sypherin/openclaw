@@ -16,7 +16,6 @@ import {
   reserveLlmCapacity,
   releaseLlmCapacity,
   getLlmRateLimiter,
-  waitForLlmCapacity,
 } from "./llm-rate-limiter.js";
 
 /**
@@ -83,7 +82,7 @@ export function mapToLlmProvider(provider: string): LlmProvider {
  * Estimate token count from a prompt string.
  * Uses a simple heuristic: ~4 characters per token on average.
  */
-export function estimateTokens(prompt: string | unknown): number {
+export function estimateTokens(prompt: unknown): number {
   if (typeof prompt === "string") {
     return Math.ceil(prompt.length / 4);
   }
@@ -93,7 +92,8 @@ export function estimateTokens(prompt: string | unknown): number {
         return acc + Math.ceil(item.length / 4);
       }
       if (item && typeof item === "object" && "text" in item) {
-        return acc + Math.ceil(String((item as { text?: unknown }).text ?? "").length / 4);
+        const text = (item as Record<string, unknown>).text;
+        return acc + Math.ceil((typeof text === "string" ? text : "").length / 4);
       }
       // Images count as ~1000 tokens
       if (item && typeof item === "object" && "data" in item) {
