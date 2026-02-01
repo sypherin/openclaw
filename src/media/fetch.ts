@@ -35,7 +35,9 @@ function stripQuotes(value: string): string {
 }
 
 function parseContentDispositionFileName(header?: string | null): string | undefined {
-  if (!header) return undefined;
+  if (!header) {
+    return undefined;
+  }
   const starMatch = /filename\*\s*=\s*([^;]+)/i.exec(header);
   if (starMatch?.[1]) {
     const cleaned = stripQuotes(starMatch[1].trim());
@@ -47,17 +49,25 @@ function parseContentDispositionFileName(header?: string | null): string | undef
     }
   }
   const match = /filename\s*=\s*([^;]+)/i.exec(header);
-  if (match?.[1]) return path.basename(stripQuotes(match[1].trim()));
+  if (match?.[1]) {
+    return path.basename(stripQuotes(match[1].trim()));
+  }
   return undefined;
 }
 
 async function readErrorBodySnippet(res: Response, maxChars = 200): Promise<string | undefined> {
   try {
     const text = await res.text();
-    if (!text) return undefined;
+    if (!text) {
+      return undefined;
+    }
     const collapsed = text.replace(/\s+/g, " ").trim();
-    if (!collapsed) return undefined;
-    if (collapsed.length <= maxChars) return collapsed;
+    if (!collapsed) {
+      return undefined;
+    }
+    if (collapsed.length <= maxChars) {
+      return collapsed;
+    }
     return `${collapsed.slice(0, maxChars)}…`;
   } catch {
     return undefined;
@@ -97,7 +107,9 @@ export async function fetchRemoteMedia(options: FetchMediaOptions): Promise<Fetc
       detail = `HTTP ${res.status}${statusText}; empty response body`;
     } else {
       const snippet = await readErrorBodySnippet(res);
-      if (snippet) detail += `; body: ${snippet}`;
+      if (snippet) {
+        detail += `; body: ${snippet}`;
+      }
     }
     throw new MediaFetchError(
       "http_error",
@@ -141,7 +153,9 @@ export async function fetchRemoteMedia(options: FetchMediaOptions): Promise<Fetc
   });
   if (fileName && !path.extname(fileName) && contentType) {
     const ext = extensionForMime(contentType);
-    if (ext) fileName = `${fileName}${ext}`;
+    if (ext) {
+      fileName = `${fileName}${ext}`;
+    }
   }
 
   return {
@@ -170,7 +184,9 @@ async function readResponseWithLimit(res: Response, maxBytes: number): Promise<B
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       if (value?.length) {
         total += value.length;
         if (total > maxBytes) {
