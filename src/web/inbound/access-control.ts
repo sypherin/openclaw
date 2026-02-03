@@ -28,6 +28,9 @@ export async function checkInboundAccessControl(params: {
   messageTimestampMs?: number;
   connectedAtMs?: number;
   pairingGraceMs?: number;
+  /** When true, the message is from a history sync / offline catch-up batch
+   *  and should never trigger outbound pairing replies. */
+  isHistorySync?: boolean;
   sock: {
     sendMessage: (jid: string, content: { text: string }) => Promise<unknown>;
   };
@@ -58,9 +61,10 @@ export async function checkInboundAccessControl(params: {
       ? params.pairingGraceMs
       : PAIRING_REPLY_HISTORY_GRACE_MS;
   const suppressPairingReply =
-    typeof params.connectedAtMs === "number" &&
-    typeof params.messageTimestampMs === "number" &&
-    params.messageTimestampMs < params.connectedAtMs - pairingGraceMs;
+    params.isHistorySync === true ||
+    (typeof params.connectedAtMs === "number" &&
+      typeof params.messageTimestampMs === "number" &&
+      params.messageTimestampMs < params.connectedAtMs - pairingGraceMs);
 
   // Pre-compute normalized allowlists for filtering.
   const dmHasWildcard = allowFrom?.includes("*") ?? false;

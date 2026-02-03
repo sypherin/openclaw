@@ -209,6 +209,7 @@ export async function monitorWebInbox(options: {
         isFromMe: Boolean(msg.key?.fromMe),
         messageTimestampMs,
         connectedAtMs,
+        isHistorySync: upsert.type === "append",
         sock: { sendMessage: (jid, content) => sock.sendMessage(jid, content) },
         remoteJid,
       });
