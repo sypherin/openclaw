@@ -39,6 +39,7 @@ Verify with: `himalaya --version` — output must include `+oauth2`.
 Outlook email is fully configured and working via OAuth2. Config: `~/.config/himalaya/config.toml`
 
 To read emails, just run:
+
 ```bash
 himalaya envelope list
 ```
@@ -227,6 +228,22 @@ Or with headers flag:
 ```bash
 himalaya message write -H "To:recipient@example.com" -H "Subject:Test" "Message body here"
 ```
+
+### Save a Draft
+
+Save a message to the Drafts folder without sending:
+
+```bash
+cat << 'EOF' | himalaya message save --folder "Drafts"
+From: demo@example.com
+To: recipient@example.com
+Subject: Draft Subject
+
+Draft message body here.
+EOF
+```
+
+This saves the raw MIME message to the Drafts folder via IMAP. The draft will appear in Outlook's Drafts folder ready for editing/sending.
 
 ### Move/Copy Emails
 
