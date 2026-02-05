@@ -146,7 +146,58 @@ backend.type = "notmuch"
 backend.db-path = "~/.mail/.notmuch"
 ```
 
-## OAuth2 Authentication (for providers that support it)
+## OAuth2 Authentication
+
+**Requires:** himalaya compiled with `+oauth2` feature. Verify: `himalaya --version` must show `+oauth2`.
+
+**IMPORTANT:** On this machine, the correct binary is at `~/.cargo/bin/himalaya` (symlinked to `~/.npm-global/bin/himalaya`). Do NOT use the Homebrew build — it lacks oauth2. Do NOT recompile.
+
+### Outlook / Microsoft 365 (XOAUTH2 + PKCE)
+
+```toml
+[accounts.outlook]
+email = "you@outlook.com"
+display-name = "Your Name"
+default = true
+
+backend.type = "imap"
+backend.host = "outlook.office365.com"
+backend.port = 993
+backend.login = "you@outlook.com"
+backend.encryption.type = "tls"
+backend.auth.type = "oauth2"
+backend.auth.method = "xoauth2"
+backend.auth.client-id = "your-azure-app-client-id"
+backend.auth.auth-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
+backend.auth.token-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+backend.auth.scopes = ["https://outlook.office.com/IMAP.AccessAsUser.All", "offline_access"]
+backend.auth.pkce = true
+backend.auth.redirect-host = "localhost"
+backend.auth.redirect-port = 9999
+backend.auth.access-token.keyring = "outlook-imap-access"
+backend.auth.refresh-token.keyring = "outlook-imap-refresh"
+
+message.send.backend.type = "smtp"
+message.send.backend.host = "smtp.office365.com"
+message.send.backend.port = 587
+message.send.backend.login = "you@outlook.com"
+message.send.backend.encryption.type = "start-tls"
+message.send.backend.auth.type = "oauth2"
+message.send.backend.auth.method = "xoauth2"
+message.send.backend.auth.client-id = "your-azure-app-client-id"
+message.send.backend.auth.auth-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
+message.send.backend.auth.token-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+message.send.backend.auth.scopes = ["https://outlook.office.com/SMTP.Send", "offline_access"]
+message.send.backend.auth.pkce = true
+message.send.backend.auth.redirect-host = "localhost"
+message.send.backend.auth.redirect-port = 9999
+message.send.backend.auth.access-token.keyring = "outlook-smtp-access"
+message.send.backend.auth.refresh-token.keyring = "outlook-smtp-refresh"
+```
+
+Token refresh is automatic — himalaya reads the refresh token from the system keyring, exchanges it with Microsoft's token endpoint, and stores the new access token back. The "authentication failed, refreshing access token" warning is normal.
+
+### Generic OAuth2
 
 ```toml
 backend.auth.type = "oauth2"
