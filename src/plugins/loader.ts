@@ -51,10 +51,11 @@ const resolvePluginSdkAlias = (): string | null => {
     for (let i = 0; i < 6; i += 1) {
       const srcCandidate = path.join(cursor, "src", "plugin-sdk", "index.ts");
       const distCandidate = path.join(cursor, "dist", "plugin-sdk", "index.js");
+      // Prefer srcCandidate: rolldown's ESM chunks create circular imports
+      // (chunk → index → chunk) that break jiti's CJS require() transform.
+      // Source transpilation via jiti avoids the circular dependency issue.
       const orderedCandidates = isProduction
-        ? isTest
-          ? [distCandidate, srcCandidate]
-          : [distCandidate]
+        ? [srcCandidate, distCandidate]
         : [srcCandidate, distCandidate];
       for (const candidate of orderedCandidates) {
         if (fs.existsSync(candidate)) {
