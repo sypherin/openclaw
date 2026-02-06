@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawPluginApi, PluginCommandContext } from "openclaw/plugin-sdk";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("openclaw/plugin-sdk", () => {
   return {
@@ -16,7 +16,10 @@ type RegisteredCommand = {
   handler: (ctx: PluginCommandContext) => Promise<{ text?: string }> | { text?: string };
 };
 
-function makeApi(params: { config: OpenClawPluginApi["config"]; pluginConfig?: Record<string, unknown> }) {
+function makeApi(params: {
+  config: OpenClawPluginApi["config"];
+  pluginConfig?: Record<string, unknown>;
+}) {
   let registered: RegisteredCommand | undefined;
   const api = {
     id: "device-pair",
@@ -79,7 +82,13 @@ describe("device-pair plugin", () => {
     const { api, getCommand } = makeApi({ config: {} });
     register(api);
 
-    const res = await getCommand().handler({ channel: "telegram", isAuthorizedSender: true, args: "help", commandBody: "/pair help", config: {} });
+    const res = await getCommand().handler({
+      channel: "telegram",
+      isAuthorizedSender: true,
+      args: "help",
+      commandBody: "/pair help",
+      config: {},
+    });
     expect(res.text).toContain("/pair approve");
     expect(res.text).toContain("/pair reject");
   });
@@ -166,4 +175,3 @@ describe("device-pair plugin", () => {
     expect(res.text).toContain("Gateway Token: tok");
   });
 });
-

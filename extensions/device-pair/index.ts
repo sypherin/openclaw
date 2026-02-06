@@ -1,5 +1,5 @@
-import os from "node:os";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import os from "node:os";
 import { approveDevicePairing, listDevicePairing, rejectDevicePairing } from "openclaw/plugin-sdk";
 
 const DEFAULT_GATEWAY_PORT = 18789;
@@ -43,8 +43,7 @@ function normalizeUrl(raw: string, schemeFallback: "ws" | "wss"): string | null 
     if (!scheme) {
       return null;
     }
-    const resolvedScheme =
-      scheme === "http" ? "ws" : scheme === "https" ? "wss" : scheme;
+    const resolvedScheme = scheme === "http" ? "ws" : scheme === "https" ? "wss" : scheme;
     if (resolvedScheme !== "ws" && resolvedScheme !== "wss") {
       return null;
     }
@@ -66,7 +65,8 @@ function normalizeUrl(raw: string, schemeFallback: "ws" | "wss"): string | null 
 }
 
 function resolveGatewayPort(cfg: OpenClawPluginApi["config"]): number {
-  const envRaw = process.env.OPENCLAW_GATEWAY_PORT?.trim() || process.env.CLAWDBOT_GATEWAY_PORT?.trim();
+  const envRaw =
+    process.env.OPENCLAW_GATEWAY_PORT?.trim() || process.env.CLAWDBOT_GATEWAY_PORT?.trim();
   if (envRaw) {
     const parsed = Number.parseInt(envRaw, 10);
     if (Number.isFinite(parsed) && parsed > 0) {
@@ -80,7 +80,10 @@ function resolveGatewayPort(cfg: OpenClawPluginApi["config"]): number {
   return DEFAULT_GATEWAY_PORT;
 }
 
-function resolveScheme(cfg: OpenClawPluginApi["config"], opts?: { forceSecure?: boolean }): "ws" | "wss" {
+function resolveScheme(
+  cfg: OpenClawPluginApi["config"],
+  opts?: { forceSecure?: boolean },
+): "ws" | "wss" {
   if (opts?.forceSecure) {
     return "wss";
   }
@@ -349,12 +352,9 @@ function parseGatewayConnectInfo(params: {
 }
 
 function formatPairHelp(): string {
-  return [
-    "/pair",
-    "/pair pending",
-    "/pair approve [requestId]",
-    "/pair reject [requestId]",
-  ].join("\n");
+  return ["/pair", "/pair pending", "/pair approve [requestId]", "/pair reject [requestId]"].join(
+    "\n",
+  );
 }
 
 function formatConnectReply(info: GatewayConnectInfo): string {
@@ -367,7 +367,7 @@ function formatConnectReply(info: GatewayConnectInfo): string {
     "Pairing info:",
     "",
     "1) Open OpenClaw iOS app -> Settings -> Gateway",
-    "2) Enable \"Use Manual Gateway\"",
+    '2) Enable "Use Manual Gateway"',
     `3) Host: ${info.host}`,
     `4) Port: ${info.port}`,
     `5) Use TLS: ${info.useTLS ? "true" : "false"}`,
@@ -438,7 +438,7 @@ export default function register(api: OpenClawPluginApi) {
         const list = await listDevicePairing();
         const pending = requestId
           ? list.pending.find((entry) => entry.requestId === requestId)
-          : [...list.pending].sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0];
+          : list.pending.toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0];
         if (!pending) {
           return { text: "No pending device pairing requests." };
         }
@@ -457,7 +457,7 @@ export default function register(api: OpenClawPluginApi) {
         const list = await listDevicePairing();
         const pending = requestId
           ? list.pending.find((entry) => entry.requestId === requestId)
-          : [...list.pending].sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0];
+          : list.pending.toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0];
         if (!pending) {
           return { text: "No pending device pairing requests." };
         }

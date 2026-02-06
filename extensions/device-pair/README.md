@@ -32,4 +32,3 @@ Other commands:
 /pair pending
 /pair reject [requestId]
 ```
-
