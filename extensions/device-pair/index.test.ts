@@ -174,4 +174,61 @@ describe("device-pair plugin", () => {
     expect(res.text).toContain("Use TLS: true");
     expect(res.text).toContain("Gateway Token: tok");
   });
+
+  it("blocks unauthorized senders", async () => {
+    const { default: register } = await import("./index.ts");
+    const sdk = await import("openclaw/plugin-sdk");
+    const listDevicePairing = sdk.listDevicePairing as unknown as ReturnType<typeof vi.fn>;
+    const approveDevicePairing = sdk.approveDevicePairing as unknown as ReturnType<typeof vi.fn>;
+    const rejectDevicePairing = sdk.rejectDevicePairing as unknown as ReturnType<typeof vi.fn>;
+
+    const { api, getCommand } = makeApi({
+      config: {
+        gateway: {
+          auth: { mode: "token", token: "tok" },
+        },
+      },
+      pluginConfig: { publicUrl: "https://example.com" },
+    });
+    register(api);
+
+    const pendingRes = await getCommand().handler({
+      channel: "telegram",
+      isAuthorizedSender: false,
+      args: "pending",
+      commandBody: "/pair pending",
+      config: api.config,
+    });
+    expect(pendingRes.text).toContain("Not authorized");
+    expect(listDevicePairing).not.toHaveBeenCalled();
+
+    const approveRes = await getCommand().handler({
+      channel: "telegram",
+      isAuthorizedSender: false,
+      args: "approve",
+      commandBody: "/pair approve",
+      config: api.config,
+    });
+    expect(approveRes.text).toContain("Not authorized");
+    expect(approveDevicePairing).not.toHaveBeenCalled();
+
+    const rejectRes = await getCommand().handler({
+      channel: "telegram",
+      isAuthorizedSender: false,
+      args: "reject",
+      commandBody: "/pair reject",
+      config: api.config,
+    });
+    expect(rejectRes.text).toContain("Not authorized");
+    expect(rejectDevicePairing).not.toHaveBeenCalled();
+
+    const connectRes = await getCommand().handler({
+      channel: "telegram",
+      isAuthorizedSender: false,
+      args: "",
+      commandBody: "/pair",
+      config: api.config,
+    });
+    expect(connectRes.text).toContain("Not authorized");
+  });
 });

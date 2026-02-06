@@ -380,6 +380,10 @@ function formatConnectReply(info: GatewayConnectInfo): string {
   ].join("\n");
 }
 
+function formatNotAuthorized(): string {
+  return "Not authorized.";
+}
+
 type PendingPairingRequest = {
   requestId: string;
   deviceId: string;
@@ -418,6 +422,7 @@ export default function register(api: OpenClawPluginApi) {
       const args = ctx.args?.trim() ?? "";
       const tokens = args.split(/\s+/).filter(Boolean);
       const action = tokens[0]?.toLowerCase() ?? "";
+      const authorized = ctx.isAuthorizedSender;
       api.logger.info(
         `device-pair: /pair invoked channel=${ctx.channel} sender=${ctx.senderId ?? "unknown"} action=${
           action || "new"
@@ -426,6 +431,12 @@ export default function register(api: OpenClawPluginApi) {
 
       if (action === "help") {
         return { text: formatPairHelp() };
+      }
+
+      // This command can reveal gateway connection details (including auth), so
+      // require an authorized sender for all non-help actions.
+      if (!authorized) {
+        return { text: formatNotAuthorized() };
       }
 
       if (action === "status" || action === "pending") {
