@@ -75,3 +75,12 @@ USER.md
 memory/
 .agent/*.json
 !.agent/workflows/
+
+# Blocked: soul-evil hook (removed from fork)
+src/hooks/soul-evil.ts
+src/hooks/soul-evil.test.ts
+src/hooks/bundled/soul-evil/
+docs/hooks/soul-evil.md
+docs/zh-CN/hooks/soul-evil.md
+dist/hooks/bundled/soul-evil/
+**/SOUL_EVIL.md
