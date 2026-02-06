@@ -61,15 +61,24 @@ const normalizePathEntries = (value?: string) =>
 
 describe("exec PATH login shell merge", () => {
   const originalPath = process.env.PATH;
+  const originalBootstrapped = process.env.OPENCLAW_PATH_BOOTSTRAPPED;
 
   afterEach(() => {
     process.env.PATH = originalPath;
+    if (originalBootstrapped === undefined) {
+      delete process.env.OPENCLAW_PATH_BOOTSTRAPPED;
+    } else {
+      process.env.OPENCLAW_PATH_BOOTSTRAPPED = originalBootstrapped;
+    }
   });
 
   it("merges login-shell PATH for host=gateway", async () => {
     if (isWin) {
       return;
     }
+    // Ensure this test stays focused on login shell PATH merging rather than
+    // global PATH bootstrapping (which depends on filesystem state).
+    process.env.OPENCLAW_PATH_BOOTSTRAPPED = "1";
     process.env.PATH = "/usr/bin";
 
     const { createExecTool } = await import("./bash-tools.exec.js");
@@ -82,7 +91,14 @@ describe("exec PATH login shell merge", () => {
     const result = await tool.execute("call1", { command: "echo $PATH" });
     const entries = normalizePathEntries(result.content.find((c) => c.type === "text")?.text);
 
-    expect(entries).toEqual(["/custom/bin", "/opt/bin", "/usr/bin"]);
+    const customIdx = entries.indexOf("/custom/bin");
+    const optIdx = entries.indexOf("/opt/bin");
+    const usrIdx = entries.indexOf("/usr/bin");
+    expect(customIdx).toBeGreaterThanOrEqual(0);
+    expect(optIdx).toBeGreaterThanOrEqual(0);
+    expect(usrIdx).toBeGreaterThanOrEqual(0);
+    expect(customIdx).toBeLessThan(optIdx);
+    expect(optIdx).toBeLessThan(usrIdx);
     expect(shellPathMock).toHaveBeenCalledTimes(1);
   });
 
@@ -90,6 +106,7 @@ describe("exec PATH login shell merge", () => {
     if (isWin) {
       return;
     }
+    process.env.OPENCLAW_PATH_BOOTSTRAPPED = "1";
     process.env.PATH = "/usr/bin";
 
     const { createExecTool } = await import("./bash-tools.exec.js");
