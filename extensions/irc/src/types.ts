@@ -77,7 +77,10 @@ export type CoreConfig = OpenClawConfig & {
 
 export type IrcInboundMessage = {
   messageId: string;
+  /** Conversation peer id: channel name for groups, sender nick for DMs. */
   target: string;
+  /** Raw IRC PRIVMSG target (bot nick for DMs, channel for groups). */
+  rawTarget?: string;
   senderNick: string;
   senderUser?: string;
   senderHost?: string;

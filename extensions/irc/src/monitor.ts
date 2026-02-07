@@ -16,6 +16,20 @@ export type IrcMonitorOptions = {
   onMessage?: (message: IrcInboundMessage, client: IrcClient) => void | Promise<void>;
 };
 
+export function resolveIrcInboundTarget(params: { target: string; senderNick: string }): {
+  isGroup: boolean;
+  target: string;
+  rawTarget: string;
+} {
+  const rawTarget = params.target;
+  const isGroup = isChannelTarget(rawTarget);
+  if (isGroup) {
+    return { isGroup: true, target: rawTarget, rawTarget };
+  }
+  const senderNick = params.senderNick.trim();
+  return { isGroup: false, target: senderNick || rawTarget, rawTarget };
+}
+
 export async function monitorIrcProvider(opts: IrcMonitorOptions): Promise<{ stop: () => void }> {
   const core = getIrcRuntime();
   const cfg = opts.config ?? (core.config.loadConfig() as CoreConfig);
@@ -83,16 +97,20 @@ export async function monitorIrcProvider(opts: IrcMonitorOptions): Promise<{ sto
         return;
       }
 
-      const isGroup = isChannelTarget(event.target);
+      const inboundTarget = resolveIrcInboundTarget({
+        target: event.target,
+        senderNick: event.senderNick,
+      });
       const message: IrcInboundMessage = {
         messageId: makeIrcMessageId(),
-        target: event.target,
+        target: inboundTarget.target,
+        rawTarget: inboundTarget.rawTarget,
         senderNick: event.senderNick,
         senderUser: event.senderUser,
         senderHost: event.senderHost,
         text: event.text,
         timestamp: Date.now(),
-        isGroup,
+        isGroup: inboundTarget.isGroup,
       };
 
       core.channel.activity.record({

@@ -72,4 +72,47 @@ describe("irc onboarding", () => {
     expect(result.cfg.channels?.irc?.groupPolicy).toBe("allowlist");
     expect(Object.keys(result.cfg.channels?.irc?.groups ?? {})).toEqual(["#openclaw", "#ops"]);
   });
+
+  it("writes DM allowFrom to top-level config for non-default account prompts", async () => {
+    const prompter: WizardPrompter = {
+      intro: vi.fn(async () => {}),
+      outro: vi.fn(async () => {}),
+      note: vi.fn(async () => {}),
+      select: vi.fn(async () => "allowlist"),
+      multiselect: vi.fn(async () => []),
+      text: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "IRC allowFrom (nick or nick!user@host)") {
+          return "Alice, Bob!ident@example.org";
+        }
+        throw new Error(`Unexpected prompt: ${message}`);
+      }) as WizardPrompter["text"],
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: vi.fn(), stop: vi.fn() })),
+    };
+
+    const promptAllowFrom = ircOnboardingAdapter.dmPolicy?.promptAllowFrom;
+    expect(promptAllowFrom).toBeTypeOf("function");
+
+    const cfg: CoreConfig = {
+      channels: {
+        irc: {
+          accounts: {
+            work: {
+              host: "irc.libera.chat",
+              nick: "openclaw-work",
+            },
+          },
+        },
+      },
+    };
+
+    const updated = (await promptAllowFrom?.({
+      cfg,
+      prompter,
+      accountId: "work",
+    })) as CoreConfig;
+
+    expect(updated.channels?.irc?.allowFrom).toEqual(["alice", "bob!ident@example.org"]);
+    expect(updated.channels?.irc?.accounts?.work?.allowFrom).toBeUndefined();
+  });
 });

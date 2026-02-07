@@ -105,8 +105,17 @@ function setIrcDmPolicy(cfg: CoreConfig, dmPolicy: DmPolicy): CoreConfig {
   };
 }
 
-function setIrcAllowFrom(cfg: CoreConfig, accountId: string, allowFrom: string[]): CoreConfig {
-  return updateIrcAccountConfig(cfg, accountId, { allowFrom });
+function setIrcAllowFrom(cfg: CoreConfig, allowFrom: string[]): CoreConfig {
+  return {
+    ...cfg,
+    channels: {
+      ...cfg.channels,
+      irc: {
+        ...cfg.channels?.irc,
+        allowFrom,
+      },
+    },
+  };
 }
 
 function setIrcNickServ(
@@ -157,9 +166,7 @@ async function promptIrcAllowFrom(params: {
   prompter: WizardPrompter;
   accountId?: string;
 }): Promise<CoreConfig> {
-  const accountId = params.accountId?.trim() || resolveDefaultIrcAccountId(params.cfg);
-  const resolved = resolveIrcAccount({ cfg: params.cfg, accountId });
-  const existing = resolved.config.allowFrom ?? [];
+  const existing = params.cfg.channels?.irc?.allowFrom ?? [];
 
   await params.prompter.note(
     [
@@ -188,7 +195,7 @@ async function promptIrcAllowFrom(params: {
         .filter(Boolean),
     ),
   ];
-  return setIrcAllowFrom(params.cfg, accountId, normalized);
+  return setIrcAllowFrom(params.cfg, normalized);
 }
 
 async function promptIrcNickServConfig(params: {
