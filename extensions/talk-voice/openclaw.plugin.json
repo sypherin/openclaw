@@ -1,7 +1,10 @@
 {
   "id": "talk-voice",
   "name": "Talk Voice",
-  "version": "0.0.1",
-  "main": "index.ts",
-  "description": "Manage ElevenLabs Talk voice selection (list/set)."
+  "description": "Manage Talk voice selection (list/set).",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
 }
