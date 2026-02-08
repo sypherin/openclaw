@@ -116,6 +116,7 @@ final class NodeAppModel {
     private var operatorConnected = false
     var gatewaySession: GatewayNodeSession { self.nodeGateway }
     var operatorSession: GatewayNodeSession { self.operatorGateway }
+    private(set) var activeGatewayConnectConfig: GatewayConnectConfig?
 
     var cameraHUDText: String?
     var cameraHUDKind: CameraHUDKind?
@@ -1465,6 +1466,13 @@ extension NodeAppModel {
         let effectiveStableID = stableID.isEmpty ? url.absoluteString : stableID
         let sessionBox = tls.map { WebSocketSessionBox(session: GatewayTLSPinningSession(params: $0)) }
 
+        self.activeGatewayConnectConfig = GatewayConnectConfig(
+            url: url,
+            stableID: stableID,
+            tls: tls,
+            token: token,
+            password: password,
+            nodeOptions: connectOptions)
         self.prepareForGatewayConnect(url: url, stableID: effectiveStableID)
         self.startOperatorGatewayLoop(
             url: url,
@@ -1480,6 +1488,20 @@ extension NodeAppModel {
             password: password,
             nodeOptions: connectOptions,
             sessionBox: sessionBox)
+    }
+
+    /// Preferred entry-point: apply a single config object and start both sessions.
+    func applyGatewayConnectConfig(_ cfg: GatewayConnectConfig) {
+        self.activeGatewayConnectConfig = cfg
+        self.connectToGateway(
+            url: cfg.url,
+            // Preserve the caller-provided stableID (may be empty) and let connectToGateway
+            // derive the effective stable id consistently for persistence keys.
+            gatewayStableID: cfg.stableID,
+            tls: cfg.tls,
+            token: cfg.token,
+            password: cfg.password,
+            connectOptions: cfg.nodeOptions)
     }
 
     func disconnectGateway() {
@@ -1499,6 +1521,7 @@ extension NodeAppModel {
         self.gatewayServerName = nil
         self.gatewayRemoteAddress = nil
         self.connectedGatewayID = nil
+        self.activeGatewayConnectConfig = nil
         self.gatewayConnected = false
         self.operatorConnected = false
         self.talkMode.updateGatewayConnected(false)

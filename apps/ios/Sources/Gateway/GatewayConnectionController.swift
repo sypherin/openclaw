@@ -291,7 +291,8 @@ final class GatewayConnectionController {
     private func attemptAutoReconnectIfNeeded() {
         guard let appModel = self.appModel else { return }
         guard appModel.gatewayAutoReconnectEnabled else { return }
-        guard appModel.gatewayServerName == nil else { return }
+        // Avoid starting duplicate connect loops while a prior config is active.
+        guard appModel.activeGatewayConnectConfig == nil else { return }
         guard UserDefaults.standard.bool(forKey: "gateway.autoconnect") else { return }
         self.didAutoConnect = false
         self.maybeAutoConnect()
@@ -327,13 +328,14 @@ final class GatewayConnectionController {
             await MainActor.run {
                 appModel.gatewayStatusText = "Connecting…"
             }
-            appModel.connectToGateway(
+            let cfg = GatewayConnectConfig(
                 url: url,
-                gatewayStableID: gatewayStableID,
+                stableID: gatewayStableID,
                 tls: tls,
                 token: token,
                 password: password,
-                connectOptions: connectOptions)
+                nodeOptions: connectOptions)
+            appModel.applyGatewayConnectConfig(cfg)
         }
     }
 
