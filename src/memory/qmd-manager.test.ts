@@ -666,6 +666,7 @@ describe("QmdMemoryManager", () => {
       // Custom content should be preserved.
       const content = await fs.readFile(path.join(customModelsDir, "custom-model.bin"), "utf-8");
       expect(content).toBe("custom");
+      expect(logWarnMock).not.toHaveBeenCalled();
 
       await manager!.close();
     });
