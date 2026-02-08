@@ -56,28 +56,38 @@ describe("warning filter", () => {
   });
 
   it("installs once and suppresses known warnings at emit time", async () => {
-    const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const seenWarningCodes: string[] = [];
+    const onWarning = (warning: Error & { code?: string }) => {
+      if (typeof warning.code === "string") {
+        seenWarningCodes.push(warning.code);
+      }
+    };
+    process.on("warning", onWarning);
 
-    installProcessWarningFilter();
-    installProcessWarningFilter();
-    installProcessWarningFilter();
-    const emitWarning = (...args: unknown[]) =>
-      (process.emitWarning as unknown as (...warningArgs: unknown[]) => void)(...args);
+    try {
+      installProcessWarningFilter();
+      installProcessWarningFilter();
+      installProcessWarningFilter();
+      const emitWarning = (...args: unknown[]) =>
+        (process.emitWarning as unknown as (...warningArgs: unknown[]) => void)(...args);
 
-    emitWarning(
-      "The `util._extend` API is deprecated. Please use Object.assign() instead.",
-      "DeprecationWarning",
-      "DEP0060",
-    );
-    emitWarning("The `util._extend` API is deprecated. Please use Object.assign() instead.", {
-      type: "DeprecationWarning",
-      code: "DEP0060",
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(writeSpy).not.toHaveBeenCalled();
+      emitWarning(
+        "The `util._extend` API is deprecated. Please use Object.assign() instead.",
+        "DeprecationWarning",
+        "DEP0060",
+      );
+      emitWarning("The `util._extend` API is deprecated. Please use Object.assign() instead.", {
+        type: "DeprecationWarning",
+        code: "DEP0060",
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(seenWarningCodes).not.toContain("DEP0060");
 
-    emitWarning("Visible warning", { type: "Warning", code: "OPENCLAW_TEST_WARNING" });
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(writeSpy).toHaveBeenCalled();
+      emitWarning("Visible warning", { type: "Warning", code: "OPENCLAW_TEST_WARNING" });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(seenWarningCodes).toContain("OPENCLAW_TEST_WARNING");
+    } finally {
+      process.off("warning", onWarning);
+    }
   });
 });
