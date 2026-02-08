@@ -1462,19 +1462,20 @@ extension NodeAppModel {
         connectOptions: GatewayConnectOptions)
     {
         let stableID = gatewayStableID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveStableID = stableID.isEmpty ? url.absoluteString : stableID
         let sessionBox = tls.map { WebSocketSessionBox(session: GatewayTLSPinningSession(params: $0)) }
 
-        self.prepareForGatewayConnect(url: url, stableID: stableID)
+        self.prepareForGatewayConnect(url: url, stableID: effectiveStableID)
         self.startOperatorGatewayLoop(
             url: url,
-            stableID: stableID,
+            stableID: effectiveStableID,
             token: token,
             password: password,
             nodeOptions: connectOptions,
             sessionBox: sessionBox)
         self.startNodeGatewayLoop(
             url: url,
-            stableID: stableID,
+            stableID: effectiveStableID,
             token: token,
             password: password,
             nodeOptions: connectOptions,
@@ -1516,15 +1517,14 @@ private extension NodeAppModel {
         self.gatewayHealthMonitor.stop()
         self.gatewayServerName = nil
         self.gatewayRemoteAddress = nil
-        let effectiveStableID = stableID.isEmpty ? url.absoluteString : stableID
-        self.connectedGatewayID = effectiveStableID
+        self.connectedGatewayID = stableID
         self.gatewayConnected = false
         self.operatorConnected = false
         self.voiceWakeSyncTask?.cancel()
         self.voiceWakeSyncTask = nil
         self.gatewayDefaultAgentId = nil
         self.gatewayAgents = []
-        self.selectedAgentId = GatewaySettingsStore.loadGatewaySelectedAgentId(stableID: effectiveStableID)
+        self.selectedAgentId = GatewaySettingsStore.loadGatewaySelectedAgentId(stableID: stableID)
     }
 
     func startOperatorGatewayLoop(
@@ -1547,10 +1547,7 @@ private extension NodeAppModel {
                 }
 
                 let effectiveClientId =
-                    !stableID.isEmpty
-                        ? (GatewaySettingsStore.loadGatewayClientIdOverride(stableID: stableID) ??
-                            nodeOptions.clientId)
-                        : nodeOptions.clientId
+                    GatewaySettingsStore.loadGatewayClientIdOverride(stableID: stableID) ?? nodeOptions.clientId
                 let operatorOptions = self.makeOperatorConnectOptions(
                     clientId: effectiveClientId,
                     displayName: nodeOptions.clientDisplayName)
@@ -1690,11 +1687,9 @@ private extension NodeAppModel {
                     {
                         didFallbackClientId = true
                         currentOptions.clientId = fallbackClientId
-                        if !stableID.isEmpty {
-                            GatewaySettingsStore.saveGatewayClientIdOverride(
-                                stableID: stableID,
-                                clientId: fallbackClientId)
-                        }
+                        GatewaySettingsStore.saveGatewayClientIdOverride(
+                            stableID: stableID,
+                            clientId: fallbackClientId)
                         await MainActor.run { self.gatewayStatusText = "Gateway rejected client id. Retrying…" }
                         continue
                     }

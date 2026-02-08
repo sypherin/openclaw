@@ -251,28 +251,68 @@ enum GatewaySettingsStore {
 enum GatewayDiagnostics {
     private static let logger = Logger(subsystem: "ai.openclaw.ios", category: "GatewayDiag")
     private static let queue = DispatchQueue(label: "ai.openclaw.gateway.diagnostics")
+    private static let maxLogBytes: Int64 = 512 * 1024
+    private static let keepLogBytes: Int64 = 256 * 1024
+    private static let logSizeCheckEveryWrites = 50
+    nonisolated(unsafe) private static var logWritesSinceCheck = 0
     private static var fileURL: URL? {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
             .appendingPathComponent("openclaw-gateway.log")
     }
 
+    private static func truncateLogIfNeeded(url: URL) {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let sizeNumber = attrs[.size] as? NSNumber
+        else { return }
+        let size = sizeNumber.int64Value
+        guard size > self.maxLogBytes else { return }
+
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+
+            let start = max(Int64(0), size - self.keepLogBytes)
+            try handle.seek(toOffset: UInt64(start))
+            var tail = try handle.readToEnd() ?? Data()
+
+            // If we truncated mid-line, drop the first partial line so logs remain readable.
+            if start > 0, let nl = tail.firstIndex(of: 10) {
+                let next = tail.index(after: nl)
+                if next < tail.endIndex {
+                    tail = tail.suffix(from: next)
+                } else {
+                    tail = Data()
+                }
+            }
+
+            try tail.write(to: url, options: .atomic)
+        } catch {
+            // Best-effort only.
+        }
+    }
+
+    private static func appendToLog(url: URL, data: Data) {
+        if FileManager.default.fileExists(atPath: url.path) {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+            }
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     static func bootstrap() {
         guard let url = fileURL else { return }
         queue.async {
+            self.truncateLogIfNeeded(url: url)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let timestamp = formatter.string(from: Date())
             let line = "[\(timestamp)] gateway diagnostics started\n"
             if let data = line.data(using: .utf8) {
-                if FileManager.default.fileExists(atPath: url.path) {
-                    if let handle = try? FileHandle(forWritingTo: url) {
-                        defer { try? handle.close() }
-                        _ = try? handle.seekToEnd()
-                        try? handle.write(contentsOf: data)
-                    }
-                } else {
-                    try? data.write(to: url, options: .atomic)
-                }
+                self.appendToLog(url: url, data: data)
             }
         }
     }
@@ -286,17 +326,14 @@ enum GatewayDiagnostics {
 
         guard let url = fileURL else { return }
         queue.async {
+            self.logWritesSinceCheck += 1
+            if self.logWritesSinceCheck >= self.logSizeCheckEveryWrites {
+                self.logWritesSinceCheck = 0
+                self.truncateLogIfNeeded(url: url)
+            }
             let entry = line + "\n"
             if let data = entry.data(using: .utf8) {
-                if FileManager.default.fileExists(atPath: url.path) {
-                    if let handle = try? FileHandle(forWritingTo: url) {
-                        defer { try? handle.close() }
-                        _ = try? handle.seekToEnd()
-                        try? handle.write(contentsOf: data)
-                    }
-                } else {
-                    try? data.write(to: url, options: .atomic)
-                }
+                self.appendToLog(url: url, data: data)
             }
         }
     }
