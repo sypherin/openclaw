@@ -2,6 +2,10 @@ import Foundation
 
 let launchdLabel = "ai.openclaw.mac"
 let gatewayLaunchdLabel = "ai.openclaw.gateway"
+
+// Stable defaults suite for Nix-managed deployments.
+// Do not change casually; nix-openclaw writes app defaults into this suite.
+let nixDefaultsSuiteName = "ai.openclaw.mac"
 let onboardingVersionKey = "openclaw.onboardingVersion"
 let onboardingSeenKey = "openclaw.onboardingSeen"
 let currentOnboardingVersion = 7
@@ -12,6 +16,9 @@ let swabbleTriggersKey = "openclaw.swabbleTriggers"
 let voiceWakeTriggerChimeKey = "openclaw.voiceWakeTriggerChime"
 let voiceWakeSendChimeKey = "openclaw.voiceWakeSendChime"
 let showDockIconKey = "openclaw.showDockIcon"
+
+// Nix mode defaults
+let nixAutoLaunchAtLoginKey = "openclaw.nixAutoLaunchAtLogin"
 let defaultVoiceWakeTriggers = ["openclaw"]
 let voiceWakeMaxWords = 32
 let voiceWakeMaxWordLength = 64

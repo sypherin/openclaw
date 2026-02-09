@@ -6,9 +6,30 @@ extension ProcessInfo {
         return String(cString: raw) == "1"
     }
 
+    static func resolveNixMode(
+        environment: [String: String],
+        standard: UserDefaults,
+        nixSuite: UserDefaults?,
+        isAppBundle: Bool
+    ) -> Bool {
+        if environment["OPENCLAW_NIX_MODE"] == "1" { return true }
+        if standard.bool(forKey: "openclaw.nixMode") { return true }
+
+        // Only consult the stable suite when running as a .app bundle.
+        // This avoids local developer machines accidentally influencing unit tests.
+        if isAppBundle, let nixSuite, nixSuite.bool(forKey: "openclaw.nixMode") { return true }
+
+        return false
+    }
+
     var isNixMode: Bool {
-        if let raw = getenv("OPENCLAW_NIX_MODE"), String(cString: raw) == "1" { return true }
-        return UserDefaults.standard.bool(forKey: "openclaw.nixMode")
+        let isAppBundle = Bundle.main.bundleURL.pathExtension == "app"
+        let nixSuite = UserDefaults(suiteName: nixDefaultsSuiteName)
+        return Self.resolveNixMode(
+            environment: self.environment,
+            standard: .standard,
+            nixSuite: nixSuite,
+            isAppBundle: isAppBundle)
     }
 
     var isRunningTests: Bool {
