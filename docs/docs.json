@@ -1504,11 +1504,7 @@
               {
                 "group": "自动化",
                 "pages": [
-<<<<<<< HEAD
-                  "zh-CN/hooks",
-=======
                   "zh-CN/automation/hooks",
->>>>>>> upstream/main
                   "zh-CN/automation/cron-jobs",
                   "zh-CN/automation/cron-vs-heartbeat",
                   "zh-CN/automation/troubleshooting",
