@@ -22,7 +22,7 @@ import { resolveSignalAccount } from "../signal/accounts.js";
 import { resolveSlackAccount, resolveSlackReplyToMode } from "../slack/accounts.js";
 import { buildSlackThreadingToolContext } from "../slack/threading-tool-context.js";
 import { resolveTelegramAccount } from "../telegram/accounts.js";
-import { normalizeE164 } from "../utils.js";
+import { escapeRegExp, normalizeE164 } from "../utils.js";
 import { resolveWhatsAppAccount } from "../web/accounts.js";
 import { normalizeWhatsAppTarget } from "../whatsapp/normalize.js";
 import {
@@ -79,9 +79,6 @@ const formatLower = (allowFrom: Array<string | number>) =>
     .map((entry) => String(entry).trim())
     .filter(Boolean)
     .map((entry) => entry.toLowerCase());
-
-const escapeDockRegexLiteral = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 // Channel docks: lightweight channel metadata/behavior for shared code paths.
 //
 // Rules:
@@ -164,7 +161,7 @@ const DOCKS: Record<ChatChannelId, ChannelDock> = {
         if (!selfE164) {
           return [];
         }
-        const escaped = escapeDockRegexLiteral(selfE164);
+        const escaped = escapeRegExp(selfE164);
         return [escaped, `@${escaped}`];
       },
     },
