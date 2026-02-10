@@ -27,7 +27,9 @@ export function resolveIrcGroupMatch(params: {
   const direct = groups[params.target];
   if (direct) {
     return {
-      allowed: direct.enabled !== false,
+      // "allowed" means the target matched an allowlisted key.
+      // Explicit disables are handled later by resolveIrcGroupAccessGate.
+      allowed: true,
       groupConfig: direct,
       wildcardConfig: groups["*"],
       hasConfiguredGroups,
@@ -40,7 +42,9 @@ export function resolveIrcGroupMatch(params: {
     const matched = groups[directKey];
     if (matched) {
       return {
-        allowed: matched.enabled !== false,
+        // "allowed" means the target matched an allowlisted key.
+        // Explicit disables are handled later by resolveIrcGroupAccessGate.
+        allowed: true,
         groupConfig: matched,
         wildcardConfig: groups["*"],
         hasConfiguredGroups,
@@ -51,7 +55,9 @@ export function resolveIrcGroupMatch(params: {
   const wildcard = groups["*"];
   if (wildcard) {
     return {
-      allowed: wildcard.enabled !== false,
+      // "allowed" means the target matched an allowlisted key.
+      // Explicit disables are handled later by resolveIrcGroupAccessGate.
+      allowed: true,
       wildcardConfig: wildcard,
       hasConfiguredGroups,
     };
