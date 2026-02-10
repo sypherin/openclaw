@@ -79,6 +79,16 @@ function buildTimeSection(params: { userTimezone?: string }) {
   return ["## Current Date & Time", `Time zone: ${params.userTimezone}`, ""];
 }
 
+function buildSafetySection() {
+  return [
+    "## Safety",
+    "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
+    "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
+    "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
+    "",
+  ];
+}
+
 function buildSecuritySection() {
   return [
     "## Security (Prompt Injection Defense)",
@@ -104,7 +114,6 @@ function buildSecuritySection() {
   ];
 }
 
-
 function buildReplyTagsSection(isMinimal: boolean) {
   if (isMinimal) {
     return [];
@@ -113,7 +122,7 @@ function buildReplyTagsSection(isMinimal: boolean) {
     "## Reply Tags",
     "To request a native reply/quote on supported surfaces, include one tag in your reply:",
     "- [[reply_to_current]] replies to the triggering message.",
-    "- [[reply_to:<id>]] replies to a specific message id when you have it.",
+    "- Prefer [[reply_to_current]]. Use [[reply_to:<id>]] only when an id was explicitly provided (e.g. by the user or a tool).",
     "Whitespace inside the tag is allowed (e.g. [[ reply_to_current ]] / [[ reply_to: 123 ]]).",
     "Tags are stripped before sending; support depends on the current channel config.",
     "",
@@ -216,6 +225,7 @@ export function buildAgentSystemPrompt(params: {
     node?: string;
     model?: string;
     defaultModel?: string;
+    shell?: string;
     channel?: string;
     capabilities?: string[];
     repoRoot?: string;
@@ -373,13 +383,6 @@ export function buildAgentSystemPrompt(params: {
   const messageChannelOptions = listDeliverableMessageChannels().join("|");
   const promptMode = params.promptMode ?? "full";
   const isMinimal = promptMode === "minimal" || promptMode === "none";
-  const safetySection = [
-    "## Safety",
-    "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
-    "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
-    "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
-    "",
-  ];
   const skillsSection = buildSkillsSection({
     skillsPrompt,
     isMinimal,
@@ -436,7 +439,7 @@ export function buildAgentSystemPrompt(params: {
     "Keep narration brief and value-dense; avoid repeating obvious steps.",
     "Use plain human language for narration unless in a technical context.",
     "",
-    ...safetySection,
+    ...buildSafetySection(),
     ...buildSecuritySection(),
     "## OpenClaw CLI Quick Reference",
     "OpenClaw is controlled via subcommands. Do not invent commands.",
@@ -643,6 +646,7 @@ export function buildRuntimeLine(
     node?: string;
     model?: string;
     defaultModel?: string;
+    shell?: string;
     repoRoot?: string;
   },
   runtimeChannel?: string,
@@ -661,6 +665,7 @@ export function buildRuntimeLine(
     runtimeInfo?.node ? `node=${runtimeInfo.node}` : "",
     runtimeInfo?.model ? `model=${runtimeInfo.model}` : "",
     runtimeInfo?.defaultModel ? `default_model=${runtimeInfo.defaultModel}` : "",
+    runtimeInfo?.shell ? `shell=${runtimeInfo.shell}` : "",
     runtimeChannel ? `channel=${runtimeChannel}` : "",
     runtimeChannel
       ? `capabilities=${runtimeCapabilities.length > 0 ? runtimeCapabilities.join(",") : "none"}`

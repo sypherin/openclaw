@@ -26,16 +26,36 @@ metadata:
 
 Himalaya is a CLI email client that lets you manage emails from the terminal using IMAP, SMTP, Notmuch, or Sendmail backends.
 
+## IMPORTANT: Binary and OAuth2
+
+The himalaya binary at `~/.cargo/bin/himalaya` (also symlinked to `~/.npm-global/bin/himalaya`) is compiled with **+oauth2** support. Do NOT use the Homebrew version — it lacks oauth2.
+
+Verify with: `himalaya --version` — output must include `+oauth2`.
+
+**Do NOT attempt to recompile himalaya.** The working binary is already installed.
+
+## Outlook OAuth2 (ACTIVE)
+
+Outlook email is fully configured and working via OAuth2. Config: `~/.config/himalaya/config.toml`
+
+To read emails, just run:
+
+```bash
+himalaya envelope list
+```
+
+If you see "authentication failed, refreshing access token", that is normal — himalaya auto-refreshes the token via keyring and retries successfully.
+
 ## References
 
-- `references/configuration.md` (config file setup + IMAP/SMTP authentication)
+- `references/configuration.md` (config file setup + IMAP/SMTP/OAuth2 authentication)
 - `references/message-composition.md` (MML syntax for composing emails)
 
 ## Prerequisites
 
-1. Himalaya CLI installed (`himalaya --version` to verify)
+1. Himalaya CLI installed with +oauth2 (`himalaya --version` to verify)
 2. A configuration file at `~/.config/himalaya/config.toml`
-3. IMAP/SMTP credentials configured (password stored securely)
+3. OAuth2 tokens stored in system keyring (already configured for Outlook)
 
 ## Configuration Setup
 
@@ -45,7 +65,9 @@ Run the interactive wizard to set up an account:
 himalaya account configure
 ```
 
-Or create `~/.config/himalaya/config.toml` manually:
+Or create `~/.config/himalaya/config.toml` manually.
+
+### Password auth example:
 
 ```toml
 [accounts.personal]
@@ -68,6 +90,49 @@ message.send.backend.encryption.type = "start-tls"
 message.send.backend.login = "you@example.com"
 message.send.backend.auth.type = "password"
 message.send.backend.auth.cmd = "pass show email/smtp"
+```
+
+### OAuth2 auth example (Outlook):
+
+```toml
+[accounts.outlook]
+email = "you@outlook.com"
+display-name = "Your Name"
+default = true
+
+backend.type = "imap"
+backend.host = "outlook.office365.com"
+backend.port = 993
+backend.login = "you@outlook.com"
+backend.encryption.type = "tls"
+backend.auth.type = "oauth2"
+backend.auth.method = "xoauth2"
+backend.auth.client-id = "your-azure-app-client-id"
+backend.auth.auth-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
+backend.auth.token-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+backend.auth.scopes = ["https://outlook.office.com/IMAP.AccessAsUser.All", "offline_access"]
+backend.auth.pkce = true
+backend.auth.redirect-host = "localhost"
+backend.auth.redirect-port = 9999
+backend.auth.access-token.keyring = "outlook-imap-access"
+backend.auth.refresh-token.keyring = "outlook-imap-refresh"
+
+message.send.backend.type = "smtp"
+message.send.backend.host = "smtp.office365.com"
+message.send.backend.port = 587
+message.send.backend.login = "you@outlook.com"
+message.send.backend.encryption.type = "start-tls"
+message.send.backend.auth.type = "oauth2"
+message.send.backend.auth.method = "xoauth2"
+message.send.backend.auth.client-id = "your-azure-app-client-id"
+message.send.backend.auth.auth-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
+message.send.backend.auth.token-url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+message.send.backend.auth.scopes = ["https://outlook.office.com/SMTP.Send", "offline_access"]
+message.send.backend.auth.pkce = true
+message.send.backend.auth.redirect-host = "localhost"
+message.send.backend.auth.redirect-port = 9999
+message.send.backend.auth.access-token.keyring = "outlook-smtp-access"
+message.send.backend.auth.refresh-token.keyring = "outlook-smtp-refresh"
 ```
 
 ## Common Operations
@@ -163,6 +228,22 @@ Or with headers flag:
 ```bash
 himalaya message write -H "To:recipient@example.com" -H "Subject:Test" "Message body here"
 ```
+
+### Save a Draft
+
+Save a message to the Drafts folder without sending:
+
+```bash
+cat << 'EOF' | himalaya message save --folder "Drafts"
+From: demo@example.com
+To: recipient@example.com
+Subject: Draft Subject
+
+Draft message body here.
+EOF
+```
+
+This saves the raw MIME message to the Drafts folder via IMAP. The draft will appear in Outlook's Drafts folder ready for editing/sending.
 
 ### Move/Copy Emails
 

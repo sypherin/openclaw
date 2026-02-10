@@ -1,8 +1,8 @@
 import path from "node:path";
 import type { LookupFn, SsrFPolicy } from "../infra/net/ssrf.js";
+import { checkConnection } from "../infra/net/connection-allowlist.js";
 import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
 import { detectMime, extensionForMime } from "./mime.js";
-import { checkConnection } from "../infra/net/connection-allowlist.js";
 
 type FetchMediaResult = {
   buffer: Buffer;

@@ -2,8 +2,13 @@ import type { IncomingMessage } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import type { GatewayAuthConfig, GatewayTailscaleMode } from "../config/config.js";
 import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
-import { isTrustedProxyAddress, parseForwardedForClientIp, resolveGatewayClientIp } from "./net.js";
 import { checkAuthRateLimit, recordAuthFailure, recordAuthSuccess } from "./auth-rate-limit.js";
+import {
+  isLoopbackAddress,
+  isTrustedProxyAddress,
+  parseForwardedForClientIp,
+  resolveGatewayClientIp,
+} from "./net.js";
 
 export type ResolvedGatewayAuthMode = "token" | "password";
 
@@ -62,25 +67,6 @@ function safeEqual(a: string, b: string): boolean {
 
 function normalizeLogin(login: string): string {
   return login.trim().toLowerCase();
-}
-
-function isLoopbackAddress(ip: string | undefined): boolean {
-  if (!ip) {
-    return false;
-  }
-  if (ip === "127.0.0.1") {
-    return true;
-  }
-  if (ip.startsWith("127.")) {
-    return true;
-  }
-  if (ip === "::1") {
-    return true;
-  }
-  if (ip.startsWith("::ffff:127.")) {
-    return true;
-  }
-  return false;
 }
 
 function getHostName(hostHeader?: string): string {
@@ -299,39 +285,57 @@ export async function authorizeGatewayConnect(params: {
 
   if (auth.mode === "token") {
     if (!auth.token) {
-      if (!skipRateLimit) recordAuthFailure(clientIp);
+      if (!skipRateLimit) {
+        recordAuthFailure(clientIp);
+      }
       return { ok: false, reason: "token_missing_config" };
     }
     if (!connectAuth?.token) {
-      if (!skipRateLimit) recordAuthFailure(clientIp);
+      if (!skipRateLimit) {
+        recordAuthFailure(clientIp);
+      }
       return { ok: false, reason: "token_missing" };
     }
     if (!safeEqual(connectAuth.token, auth.token)) {
-      if (!skipRateLimit) recordAuthFailure(clientIp);
+      if (!skipRateLimit) {
+        recordAuthFailure(clientIp);
+      }
       return { ok: false, reason: "token_mismatch" };
     }
-    if (!skipRateLimit) recordAuthSuccess(clientIp);
+    if (!skipRateLimit) {
+      recordAuthSuccess(clientIp);
+    }
     return { ok: true, method: "token" };
   }
 
   if (auth.mode === "password") {
     const password = connectAuth?.password;
     if (!auth.password) {
-      if (!skipRateLimit) recordAuthFailure(clientIp);
+      if (!skipRateLimit) {
+        recordAuthFailure(clientIp);
+      }
       return { ok: false, reason: "password_missing_config" };
     }
     if (!password) {
-      if (!skipRateLimit) recordAuthFailure(clientIp);
+      if (!skipRateLimit) {
+        recordAuthFailure(clientIp);
+      }
       return { ok: false, reason: "password_missing" };
     }
     if (!safeEqual(password, auth.password)) {
-      if (!skipRateLimit) recordAuthFailure(clientIp);
+      if (!skipRateLimit) {
+        recordAuthFailure(clientIp);
+      }
       return { ok: false, reason: "password_mismatch" };
     }
-    if (!skipRateLimit) recordAuthSuccess(clientIp);
+    if (!skipRateLimit) {
+      recordAuthSuccess(clientIp);
+    }
     return { ok: true, method: "password" };
   }
 
-  if (!skipRateLimit) recordAuthFailure(clientIp);
+  if (!skipRateLimit) {
+    recordAuthFailure(clientIp);
+  }
   return { ok: false, reason: "unauthorized" };
 }
