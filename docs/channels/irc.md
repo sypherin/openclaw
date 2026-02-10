@@ -175,7 +175,7 @@ Notes:
 - `toolsBySender` keys can be a nick (e.g. `"eigen"`) or a full hostmask (`"eigen!~eigen@174.127.248.171"`) for stronger identity matching.
 - The first matching sender policy wins; `"*"` is the wildcard fallback.
 
-For more on group access vs mention-gating (and how they interact), see: [/concepts/groups](/concepts/groups).
+For more on group access vs mention-gating (and how they interact), see: [/channels/groups](/channels/groups).
 
 ## NickServ
 

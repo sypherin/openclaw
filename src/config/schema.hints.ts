@@ -747,7 +747,7 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
 
 const SENSITIVE_PATTERNS = [/token/i, /password/i, /secret/i, /api.?key/i];
 
-function isSensitivePath(path: string): boolean {
+function isSensitiveConfigPath(path: string): boolean {
   return SENSITIVE_PATTERNS.some((pattern) => pattern.test(path));
 }
 
@@ -778,7 +778,7 @@ export function buildBaseHints(): ConfigUiHints {
 export function applySensitiveHints(hints: ConfigUiHints): ConfigUiHints {
   const next = { ...hints };
   for (const key of Object.keys(next)) {
-    if (isSensitivePath(key)) {
+    if (isSensitiveConfigPath(key)) {
       next[key] = { ...next[key], sensitive: true };
     }
   }
