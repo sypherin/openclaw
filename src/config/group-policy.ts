@@ -20,7 +20,7 @@ export type ChannelGroupPolicy = {
 
 type ChannelGroups = Record<string, ChannelGroupConfig>;
 
-function resolveGroupConfig(
+function resolveChannelGroupConfig(
   groups: ChannelGroups | undefined,
   groupId: string,
   caseInsensitive = false,
@@ -155,7 +155,7 @@ export function resolveChannelGroupPolicy(params: {
   const allowlistEnabled = Boolean(groups && Object.keys(groups).length > 0);
   const normalizedId = params.groupId?.trim();
   const groupConfig = normalizedId
-    ? resolveGroupConfig(groups, normalizedId, params.groupIdCaseInsensitive)
+    ? resolveChannelGroupConfig(groups, normalizedId, params.groupIdCaseInsensitive)
     : undefined;
   const defaultConfig = groups?.["*"];
   const allowAll = allowlistEnabled && Boolean(groups && Object.hasOwn(groups, "*"));

@@ -1,19 +1,7 @@
 import type { IrcInboundMessage } from "./types.js";
+import { hasIrcControlChars } from "./control-chars.js";
 
 const IRC_TARGET_PATTERN = /^[^\s:]+$/u;
-
-function isControlChar(charCode: number): boolean {
-  return charCode <= 0x1f || charCode === 0x7f;
-}
-
-function hasControlChars(value: string): boolean {
-  for (const char of value) {
-    if (isControlChar(char.charCodeAt(0))) {
-      return true;
-    }
-  }
-  return false;
-}
 
 export function isChannelTarget(target: string): boolean {
   return target.startsWith("#") || target.startsWith("&");
@@ -49,7 +37,7 @@ export function looksLikeIrcTargetId(raw: string): boolean {
   if (!trimmed) {
     return false;
   }
-  if (hasControlChars(trimmed)) {
+  if (hasIrcControlChars(trimmed)) {
     return false;
   }
   return IRC_TARGET_PATTERN.test(trimmed);

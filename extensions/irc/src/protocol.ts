@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hasIrcControlChars, stripIrcControlChars } from "./control-chars.js";
 
 const IRC_TARGET_PATTERN = /^[^\s:]+$/u;
 
@@ -116,32 +117,9 @@ function decodeLiteralEscapes(input: string): string {
     .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
 }
 
-function isControlChar(charCode: number): boolean {
-  return charCode <= 0x1f || charCode === 0x7f;
-}
-
-function stripControlChars(value: string): string {
-  let out = "";
-  for (const char of value) {
-    if (!isControlChar(char.charCodeAt(0))) {
-      out += char;
-    }
-  }
-  return out;
-}
-
-function hasControlChars(value: string): boolean {
-  for (const char of value) {
-    if (isControlChar(char.charCodeAt(0))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function sanitizeIrcOutboundText(text: string): string {
   const decoded = decodeLiteralEscapes(text);
-  return stripControlChars(decoded.replace(/\r?\n/g, " ")).trim();
+  return stripIrcControlChars(decoded.replace(/\r?\n/g, " ")).trim();
 }
 
 export function sanitizeIrcTarget(raw: string): string {
@@ -153,7 +131,7 @@ export function sanitizeIrcTarget(raw: string): string {
   if (decoded !== decoded.trim()) {
     throw new Error(`Invalid IRC target: ${raw}`);
   }
-  if (hasControlChars(decoded)) {
+  if (hasIrcControlChars(decoded)) {
     throw new Error(`Invalid IRC target: ${raw}`);
   }
   if (!IRC_TARGET_PATTERN.test(decoded)) {

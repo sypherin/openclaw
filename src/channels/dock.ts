@@ -80,7 +80,7 @@ const formatLower = (allowFrom: Array<string | number>) =>
     .filter(Boolean)
     .map((entry) => entry.toLowerCase());
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeDockRegexLiteral = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Channel docks: lightweight channel metadata/behavior for shared code paths.
 //
@@ -164,7 +164,7 @@ const DOCKS: Record<ChatChannelId, ChannelDock> = {
         if (!selfE164) {
           return [];
         }
-        const escaped = escapeRegExp(selfE164);
+        const escaped = escapeDockRegexLiteral(selfE164);
         return [escaped, `@${escaped}`];
       },
     },
