@@ -14,6 +14,9 @@ import {
 import { saveSessionStore } from "../config/sessions.js";
 import { canonicalizeMainSessionAlias } from "../config/sessions/main-session.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+
+const log = createSubsystemLogger("state-migrations");
+
 import {
   buildAgentMainSessionKey,
   DEFAULT_ACCOUNT_ID,
@@ -315,8 +318,8 @@ function removeDirIfEmpty(dir: string) {
   }
   try {
     fs.rmdirSync(dir);
-  } catch {
-    // ignore
+  } catch (err) {
+    log.debug("removeDirIfEmpty: failed to rmdir", { dir, error: String(err) });
   }
 }
 
@@ -343,7 +346,8 @@ function resolveSymlinkTarget(linkPath: string): string | null {
   try {
     const target = fs.readlinkSync(linkPath);
     return path.resolve(path.dirname(linkPath), target);
-  } catch {
+  } catch (err) {
+    log.debug("resolveSymlinkTarget: failed to readlink", { linkPath, error: String(err) });
     return null;
   }
 }
@@ -355,7 +359,8 @@ function formatStateDirMigration(legacyDir: string, targetDir: string): string {
 function isDirPath(filePath: string): boolean {
   try {
     return fs.statSync(filePath).isDirectory();
-  } catch {
+  } catch (err) {
+    log.debug("isDirPath: stat failed", { filePath, error: String(err) });
     return false;
   }
 }
@@ -369,7 +374,8 @@ function isLegacyTreeSymlinkMirror(currentDir: string, realTargetDir: string): b
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(currentDir, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    log.debug("isLegacyTreeSymlinkMirror: readdir failed", { currentDir, error: String(err) });
     return false;
   }
   if (entries.length === 0) {
@@ -381,7 +387,8 @@ function isLegacyTreeSymlinkMirror(currentDir: string, realTargetDir: string): b
     let stat: fs.Stats;
     try {
       stat = fs.lstatSync(entryPath);
-    } catch {
+    } catch (err) {
+      log.debug("isLegacyTreeSymlinkMirror: lstat failed", { entryPath, error: String(err) });
       return false;
     }
     if (stat.isSymbolicLink()) {
@@ -392,7 +399,11 @@ function isLegacyTreeSymlinkMirror(currentDir: string, realTargetDir: string): b
       let resolvedRealTarget: string;
       try {
         resolvedRealTarget = fs.realpathSync(resolvedTarget);
-      } catch {
+      } catch (err) {
+        log.debug("isLegacyTreeSymlinkMirror: realpath failed", {
+          resolvedTarget,
+          error: String(err),
+        });
         return false;
       }
       if (!isWithinDir(resolvedRealTarget, realTargetDir)) {
@@ -416,7 +427,8 @@ function isLegacyDirSymlinkMirror(legacyDir: string, targetDir: string): boolean
   let realTargetDir: string;
   try {
     realTargetDir = fs.realpathSync(targetDir);
-  } catch {
+  } catch (err) {
+    log.debug("isLegacyDirSymlinkMirror: realpath failed", { targetDir, error: String(err) });
     return false;
   }
   return isLegacyTreeSymlinkMirror(legacyDir, realTargetDir);
@@ -443,7 +455,8 @@ export async function autoMigrateLegacyStateDir(params: {
   let legacyDir = legacyDirs.find((dir) => {
     try {
       return fs.existsSync(dir);
-    } catch {
+    } catch (err) {
+      log.debug("autoMigrateLegacyStateDir: existsSync failed", { dir, error: String(err) });
       return false;
     }
   });
@@ -453,7 +466,8 @@ export async function autoMigrateLegacyStateDir(params: {
   let legacyStat: fs.Stats | null = null;
   try {
     legacyStat = legacyDir ? fs.lstatSync(legacyDir) : null;
-  } catch {
+  } catch (err) {
+    log.debug("autoMigrateLegacyStateDir: lstat failed", { legacyDir, error: String(err) });
     legacyStat = null;
   }
   if (!legacyStat) {
@@ -480,7 +494,11 @@ export async function autoMigrateLegacyStateDir(params: {
       legacyDir = legacyTarget;
       try {
         legacyStat = fs.lstatSync(legacyDir);
-      } catch {
+      } catch (err) {
+        log.debug("autoMigrateLegacyStateDir: lstat after symlink resolution failed", {
+          legacyDir,
+          error: String(err),
+        });
         legacyStat = null;
       }
       if (!legacyStat) {
@@ -767,8 +785,11 @@ async function migrateLegacySessions(
       if (fileExists(detected.sessions.legacyStorePath)) {
         fs.rmSync(detected.sessions.legacyStorePath, { force: true });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      log.debug("migrateLegacySessions: failed to remove legacy store", {
+        path: detected.sessions.legacyStorePath,
+        error: String(err),
+      });
     }
   }
 
@@ -779,8 +800,11 @@ async function migrateLegacySessions(
     try {
       fs.renameSync(detected.sessions.legacyDir, backupDir);
       warnings.push(`Left legacy sessions at ${backupDir}`);
-    } catch {
-      // ignore
+    } catch (err) {
+      log.debug("migrateLegacySessions: failed to backup legacy sessions dir", {
+        backupDir,
+        error: String(err),
+      });
     }
   }
 
