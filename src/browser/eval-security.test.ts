@@ -3,7 +3,6 @@ import {
   BrowserEvalSecurity,
   validateBrowserEval,
   assertBrowserEvalAllowed,
-  type EvalSecurityConfig,
 } from "./eval-security.js";
 
 describe("BrowserEvalSecurity", () => {
