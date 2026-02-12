@@ -53,6 +53,12 @@ public enum DeviceIdentityStore {
         return identity
     }
 
+    public static func reset() {
+        // Best-effort: forget local device identity so the gateway sees a new device and requires pairing again.
+        let url = self.fileURL()
+        try? FileManager.default.removeItem(at: url)
+    }
+
     public static func signPayload(_ payload: String, identity: DeviceIdentity) -> String? {
         guard let privateKeyData = Data(base64Encoded: identity.privateKey) else { return nil }
         do {

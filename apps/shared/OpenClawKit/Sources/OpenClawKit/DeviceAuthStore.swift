@@ -64,6 +64,11 @@ public enum DeviceAuthStore {
         writeStore(store)
     }
 
+    public static func reset() {
+        // Best-effort: forget stored per-device tokens so a fresh pairing/approval is required.
+        try? FileManager.default.removeItem(at: fileURL())
+    }
+
     private static func normalizeRole(_ role: String) -> String {
         role.trimmingCharacters(in: .whitespacesAndNewlines)
     }
