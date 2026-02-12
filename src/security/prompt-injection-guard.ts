@@ -1,6 +1,6 @@
 /**
  * Prompt Injection Security Middleware
- * 
+ *
  * Sanitizes user input to prevent prompt injection attacks
  */
 
@@ -19,17 +19,21 @@ const BLOCKED_PATTERNS = [
 ];
 
 // Control characters and delimiters to strip
-const DANGEROUS_CHARS = /[\x00-\x1F\x7F\u200B-\u200D\uFEFF\\`\[\]]/g;
+const DANGEROUS_CHARS = /[\x00-\x1F\x7F\u200B-\u200D\uFEFF\\`[\]]/g;
 
 /**
  * Sanitize user input before processing
  */
-export function sanitizeInput(input: string): { sanitized: string; blocked: boolean; reason?: string } {
+export function sanitizeInput(input: string): {
+  sanitized: string;
+  blocked: boolean;
+  reason?: string;
+} {
   // Check for blocked patterns
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(input)) {
       return {
-        sanitized: '',
+        sanitized: "",
         blocked: true,
         reason: `Blocked pattern detected: ${pattern.source}`,
       };
@@ -37,14 +41,14 @@ export function sanitizeInput(input: string): { sanitized: string; blocked: bool
   }
 
   // Strip dangerous characters
-  const sanitized = input.replace(DANGEROUS_CHARS, '');
+  const sanitized = input.replace(DANGEROUS_CHARS, "");
 
   // Check for excessive length (potential DoS)
   if (input.length > 50000) {
     return {
       sanitized: sanitized.slice(0, 50000),
       blocked: false,
-      reason: 'Input truncated (excessive length)',
+      reason: "Input truncated (excessive length)",
     };
   }
 
@@ -54,15 +58,18 @@ export function sanitizeInput(input: string): { sanitized: string; blocked: bool
 /**
  * Validate that output doesn't leak system prompts
  */
-export function validateOutput(output: string, systemPrompt: string): { valid: boolean; reason?: string } {
+export function validateOutput(
+  output: string,
+  systemPrompt: string,
+): { valid: boolean; reason?: string } {
   // Check if output contains system prompt content
-  const systemChunks = systemPrompt.split('\n').filter(line => line.length > 20);
-  
+  const systemChunks = systemPrompt.split("\n").filter((line) => line.length > 20);
+
   for (const chunk of systemChunks) {
     if (output.includes(chunk)) {
       return {
         valid: false,
-        reason: 'Output contains system prompt content',
+        reason: "Output contains system prompt content",
       };
     }
   }
@@ -78,7 +85,7 @@ export function validateOutput(output: string, systemPrompt: string): { valid: b
     if (pattern.test(output)) {
       return {
         valid: false,
-        reason: 'Potential system prompt leak detected',
+        reason: "Potential system prompt leak detected",
       };
     }
   }
@@ -87,12 +94,19 @@ export function validateOutput(output: string, systemPrompt: string): { valid: b
 }
 
 /**
- * Rate limiting for suspicious activity
+ * Rate limiting for suspicious activity.
+ * Includes periodic cleanup to prevent unbounded memory growth.
  */
 export class RateLimiter {
   private attempts = new Map<string, { count: number; lastReset: number }>();
   private readonly maxAttempts = 5;
   private readonly windowMs = 60000; // 1 minute
+  private readonly cleanupIntervalMs = 300000; // 5 minutes
+  private cleanupTimer: NodeJS.Timeout | null = null;
+
+  constructor() {
+    this.startCleanup();
+  }
 
   isAllowed(key: string): boolean {
     const now = Date.now();
@@ -109,6 +123,31 @@ export class RateLimiter {
 
     record.count++;
     return true;
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [key, record] of this.attempts) {
+      if (now - record.lastReset > this.windowMs) {
+        this.attempts.delete(key);
+      }
+    }
+  }
+
+  private startCleanup(): void {
+    if (this.cleanupTimer) {
+      return;
+    }
+    this.cleanupTimer = setInterval(() => this.cleanup(), this.cleanupIntervalMs);
+    this.cleanupTimer.unref(); // Don't keep process alive for cleanup
+  }
+
+  stop(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.attempts.clear();
   }
 }
 

@@ -148,8 +148,11 @@ export function loadSessionStore(
       store = parsed;
     }
     mtimeMs = getFileMtimeMs(storePath) ?? mtimeMs;
-  } catch {
-    // ignore missing/invalid store; we'll recreate it
+  } catch (err) {
+    log.debug("loadSessionStore: missing or invalid store, will recreate", {
+      storePath,
+      error: String(err),
+    });
   }
 
   // Best-effort migration: message provider → channel naming.
@@ -196,7 +199,11 @@ export function readSessionUpdatedAt(params: {
   try {
     const store = loadSessionStore(params.storePath);
     return store[params.sessionKey]?.updatedAt;
-  } catch {
+  } catch (err) {
+    log.debug("readSessionUpdatedAt: failed to read", {
+      storePath: params.storePath,
+      error: String(err),
+    });
     return undefined;
   }
 }
@@ -234,7 +241,8 @@ function resolvePruneAfterMs(maintenance?: SessionMaintenanceConfig): number {
   }
   try {
     return parseDurationMs(String(raw).trim(), { defaultUnit: "d" });
-  } catch {
+  } catch (err) {
+    log.debug("resolvePruneAfterMs: failed to parse, using default", { raw, error: String(err) });
     return DEFAULT_SESSION_PRUNE_AFTER_MS;
   }
 }
@@ -246,7 +254,8 @@ function resolveRotateBytes(maintenance?: SessionMaintenanceConfig): number {
   }
   try {
     return parseByteSize(String(raw).trim(), { defaultUnit: "b" });
-  } catch {
+  } catch (err) {
+    log.debug("resolveRotateBytes: failed to parse, using default", { raw, error: String(err) });
     return DEFAULT_SESSION_ROTATE_BYTES;
   }
 }
@@ -259,8 +268,10 @@ export function resolveMaintenanceConfig(): ResolvedSessionMaintenanceConfig {
   let maintenance: SessionMaintenanceConfig | undefined;
   try {
     maintenance = loadConfig().session?.maintenance;
-  } catch {
-    // Config may not be available (e.g. in tests). Use defaults.
+  } catch (err) {
+    log.debug("resolveMaintenanceConfig: config not available, using defaults", {
+      error: String(err),
+    });
   }
   return {
     mode: maintenance?.mode ?? DEFAULT_SESSION_MAINTENANCE_MODE,
@@ -377,7 +388,8 @@ async function getSessionFileSize(storePath: string): Promise<number | null> {
   try {
     const stat = await fs.promises.stat(storePath);
     return stat.size;
-  } catch {
+  } catch (err) {
+    log.debug("getSessionFileSize: stat failed", { storePath, error: String(err) });
     return null;
   }
 }
@@ -411,8 +423,11 @@ export async function rotateSessionFile(
       backupPath: path.basename(backupPath),
       sizeBytes: fileSize,
     });
-  } catch {
-    // If rename fails (e.g. file disappeared), skip rotation.
+  } catch (err) {
+    log.debug("rotateSessionFile: rename failed, skipping rotation", {
+      storePath,
+      error: String(err),
+    });
     return false;
   }
 
@@ -434,8 +449,8 @@ export async function rotateSessionFile(
       }
       log.info("cleaned up old session store backups", { deleted: toDelete.length });
     }
-  } catch {
-    // Best-effort cleanup; don't fail the write.
+  } catch (err) {
+    log.debug("rotateSessionFile: backup cleanup failed", { storePath, error: String(err) });
   }
 
   return true;
@@ -605,8 +620,11 @@ async function withSessionStoreLock<T>(
           JSON.stringify({ pid: process.pid, startedAt: Date.now() }),
           "utf-8",
         );
-      } catch {
-        // best-effort
+      } catch (err) {
+        log.debug("withSessionStoreLock: failed to write lock metadata", {
+          lockPath,
+          error: String(err),
+        });
       }
       await handle.close();
       break;
@@ -641,8 +659,11 @@ async function withSessionStoreLock<T>(
           await fs.promises.unlink(lockPath);
           continue;
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        log.debug("withSessionStoreLock: stale lock check failed", {
+          lockPath,
+          error: String(err),
+        });
       }
 
       await new Promise((r) => setTimeout(r, pollIntervalMs));
