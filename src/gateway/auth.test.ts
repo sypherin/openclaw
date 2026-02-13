@@ -8,6 +8,7 @@ describe("gateway auth", () => {
       connectAuth: { token: "secret" },
       // Regression: avoid crashing on req.socket.remoteAddress when callers pass a non-IncomingMessage.
       req: {} as never,
+      skipRateLimit: true,
     });
     expect(res.ok).toBe(true);
   });
@@ -16,6 +17,7 @@ describe("gateway auth", () => {
     const missing = await authorizeGatewayConnect({
       auth: { mode: "token", token: "secret", allowTailscale: false },
       connectAuth: null,
+      skipRateLimit: true,
     });
     expect(missing.ok).toBe(false);
     expect(missing.reason).toBe("token_missing");
@@ -23,6 +25,7 @@ describe("gateway auth", () => {
     const mismatch = await authorizeGatewayConnect({
       auth: { mode: "token", token: "secret", allowTailscale: false },
       connectAuth: { token: "wrong" },
+      skipRateLimit: true,
     });
     expect(mismatch.ok).toBe(false);
     expect(mismatch.reason).toBe("token_mismatch");
@@ -32,6 +35,7 @@ describe("gateway auth", () => {
     const res = await authorizeGatewayConnect({
       auth: { mode: "token", allowTailscale: false },
       connectAuth: { token: "anything" },
+      skipRateLimit: true,
     });
     expect(res.ok).toBe(false);
     expect(res.reason).toBe("token_missing_config");
@@ -41,6 +45,7 @@ describe("gateway auth", () => {
     const missing = await authorizeGatewayConnect({
       auth: { mode: "password", password: "secret", allowTailscale: false },
       connectAuth: null,
+      skipRateLimit: true,
     });
     expect(missing.ok).toBe(false);
     expect(missing.reason).toBe("password_missing");
@@ -48,6 +53,7 @@ describe("gateway auth", () => {
     const mismatch = await authorizeGatewayConnect({
       auth: { mode: "password", password: "secret", allowTailscale: false },
       connectAuth: { password: "wrong" },
+      skipRateLimit: true,
     });
     expect(mismatch.ok).toBe(false);
     expect(mismatch.reason).toBe("password_mismatch");
@@ -57,6 +63,7 @@ describe("gateway auth", () => {
     const res = await authorizeGatewayConnect({
       auth: { mode: "password", allowTailscale: false },
       connectAuth: { password: "secret" },
+      skipRateLimit: true,
     });
     expect(res.ok).toBe(false);
     expect(res.reason).toBe("password_missing_config");

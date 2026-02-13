@@ -32,13 +32,12 @@ List all discovered hooks from workspace, managed, and bundled directories.
 **Example output:**
 
 ```
-Hooks (4/4 ready)
+Hooks (3/3 ready)
 
 Ready:
   🚀 boot-md ✓ - Run BOOT.md on gateway startup
   📝 command-logger ✓ - Log all command events to a centralized audit file
   💾 session-memory ✓ - Save session context to memory when /new command is issued
-
 ```
 
 **Example (verbose):**
