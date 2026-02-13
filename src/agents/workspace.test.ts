@@ -2,8 +2,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { makeTempWorkspace, writeWorkspaceFile } from "../test-helpers/workspace.js";
 import {
+  DEFAULT_AGENTS_FILENAME,
   DEFAULT_MEMORY_ALT_FILENAME,
   DEFAULT_MEMORY_FILENAME,
+  DEFAULT_SOUL_FILENAME,
+  DEFAULT_TOOLS_FILENAME,
+  filterBootstrapFilesForSession,
   loadWorkspaceBootstrapFiles,
   resolveDefaultAgentWorkspaceDir,
 } from "./workspace.js";
@@ -57,5 +61,47 @@ describe("loadWorkspaceBootstrapFiles", () => {
     );
 
     expect(memoryEntries).toHaveLength(0);
+  });
+});
+
+describe("filterBootstrapFilesForSession", () => {
+  it("keeps only AGENTS.md and TOOLS.md for subagent sessions", () => {
+    const files = [
+      { name: DEFAULT_AGENTS_FILENAME, path: "/tmp/AGENTS.md", missing: false, content: "a" },
+      { name: DEFAULT_TOOLS_FILENAME, path: "/tmp/TOOLS.md", missing: false, content: "t" },
+      { name: DEFAULT_SOUL_FILENAME, path: "/tmp/SOUL.md", missing: false, content: "s" },
+    ];
+    const filtered = filterBootstrapFilesForSession(files, "agent:main:subagent:abc");
+    expect(filtered.map((file) => file.name)).toEqual([
+      DEFAULT_AGENTS_FILENAME,
+      DEFAULT_TOOLS_FILENAME,
+    ]);
+  });
+
+  it("keeps only AGENTS.md and TOOLS.md for cron sessions", () => {
+    const files = [
+      { name: DEFAULT_AGENTS_FILENAME, path: "/tmp/AGENTS.md", missing: false, content: "a" },
+      { name: DEFAULT_TOOLS_FILENAME, path: "/tmp/TOOLS.md", missing: false, content: "t" },
+      { name: DEFAULT_SOUL_FILENAME, path: "/tmp/SOUL.md", missing: false, content: "s" },
+    ];
+    const filtered = filterBootstrapFilesForSession(files, "agent:main:cron:job-1");
+    expect(filtered.map((file) => file.name)).toEqual([
+      DEFAULT_AGENTS_FILENAME,
+      DEFAULT_TOOLS_FILENAME,
+    ]);
+  });
+
+  it("leaves non-subagent/non-cron sessions unchanged", () => {
+    const files = [
+      { name: DEFAULT_AGENTS_FILENAME, path: "/tmp/AGENTS.md", missing: false, content: "a" },
+      { name: DEFAULT_TOOLS_FILENAME, path: "/tmp/TOOLS.md", missing: false, content: "t" },
+      { name: DEFAULT_SOUL_FILENAME, path: "/tmp/SOUL.md", missing: false, content: "s" },
+    ];
+    const filtered = filterBootstrapFilesForSession(files, "agent:main:main");
+    expect(filtered.map((file) => file.name)).toEqual([
+      DEFAULT_AGENTS_FILENAME,
+      DEFAULT_TOOLS_FILENAME,
+      DEFAULT_SOUL_FILENAME,
+    ]);
   });
 });

@@ -14,7 +14,7 @@ import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
 import { type enqueueCommand, enqueueCommandInLane } from "../../process/command-queue.js";
-import { isSubagentSessionKey } from "../../routing/session-key.js";
+import { isCronSessionKey, isSubagentSessionKey } from "../../routing/session-key.js";
 import { resolveSignalReactionLevel } from "../../signal/reaction-level.js";
 import { resolveTelegramInlineButtonsScope } from "../../telegram/inline-buttons.js";
 import { resolveTelegramReactionLevel } from "../../telegram/reaction-level.js";
@@ -325,7 +325,10 @@ export async function compactEmbeddedPiSessionDirect(
       config: params.config,
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "minimal" : "full";
+    const promptMode =
+      isSubagentSessionKey(params.sessionKey) || isCronSessionKey(params.sessionKey)
+        ? "minimal"
+        : "full";
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],
