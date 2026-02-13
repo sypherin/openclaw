@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
-import { timingSafeEqual } from "node:crypto";
 import type { GatewayAuthConfig, GatewayTailscaleMode } from "../config/config.js";
 import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
+import { safeEqualSecret } from "../security/secret-equal.js";
 import { checkAuthRateLimit, recordAuthFailure, recordAuthSuccess } from "./auth-rate-limit.js";
 import {
   isLoopbackAddress,
@@ -40,30 +40,6 @@ type TailscaleUser = {
 };
 
 type TailscaleWhoisLookup = (ip: string) => Promise<TailscaleWhoisIdentity | null>;
-
-/**
- * SECURITY: Constant-time string comparison that doesn't leak length information.
- * Both the content and length comparison are done in constant time to prevent
- * timing attacks that could be used to guess token/password values.
- */
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  // Pad both buffers to the same length to ensure constant-time comparison
-  // regardless of actual string lengths
-  const maxLen = Math.max(bufA.length, bufB.length, 1);
-  const paddedA = Buffer.alloc(maxLen);
-  const paddedB = Buffer.alloc(maxLen);
-  bufA.copy(paddedA);
-  bufB.copy(paddedB);
-  // XOR the lengths and check equality - this is constant time
-  // because we're comparing fixed-size integers
-  const lengthsMatch = (bufA.length ^ bufB.length) === 0;
-  // Compare content in constant time
-  const contentMatches = timingSafeEqual(paddedA, paddedB);
-  // Both must be true - computed without short-circuit to maintain constant time
-  return lengthsMatch && contentMatches;
-}
 
 function normalizeLogin(login: string): string {
   return login.trim().toLowerCase();
@@ -296,7 +272,7 @@ export async function authorizeGatewayConnect(params: {
       }
       return { ok: false, reason: "token_missing" };
     }
-    if (!safeEqual(connectAuth.token, auth.token)) {
+    if (!safeEqualSecret(connectAuth.token, auth.token)) {
       if (!skipRateLimit) {
         recordAuthFailure(clientIp);
       }
@@ -322,7 +298,7 @@ export async function authorizeGatewayConnect(params: {
       }
       return { ok: false, reason: "password_missing" };
     }
-    if (!safeEqual(password, auth.password)) {
+    if (!safeEqualSecret(password, auth.password)) {
       if (!skipRateLimit) {
         recordAuthFailure(clientIp);
       }
