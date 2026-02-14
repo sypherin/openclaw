@@ -1,12 +1,6 @@
 import type { StreamFn } from "@mariozechner/pi-agent-core";
-import type {
-  AssistantMessage,
-  StopReason,
-  TextContent,
-  ToolCall,
-  Usage,
-} from "@mariozechner/pi-ai";
-import { createAssistantMessageEventStream, streamSimple } from "@mariozechner/pi-ai";
+import type { AssistantMessage, StopReason, TextContent } from "@mariozechner/pi-ai";
+import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
 
 // ── SSE parser ───────────────────────────────────────────────────────────────
 
@@ -90,7 +84,7 @@ function extractDeltaText(delta: OpenAIDelta | undefined): { content: string; re
  * the raw API response and maps reasoning_content → content when content
  * is null/empty.
  */
-export function createNvidiaReasoningStreamFn(baseStreamFn?: StreamFn): StreamFn {
+export function createNvidiaReasoningStreamFn(): StreamFn {
   return (model, context, options) => {
     const stream = createAssistantMessageEventStream();
 
