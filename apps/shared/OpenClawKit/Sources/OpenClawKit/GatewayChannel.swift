@@ -399,8 +399,8 @@ public actor GatewayChannelActor {
         role: String
     ) async throws {
         if res.ok == false {
-            let msg = (res.error?["message"]?.value as? String) ?? "gateway connect failed"
-            let code = (res.error?["code"]?.value as? String) ?? ""
+            let code = res.error?["code"]?.value as? String
+            let msg = res.error?["message"]?.value as? String
             let requestId: String? = {
                 guard let detailsAny = res.error?["details"]?.value else { return nil }
                 if let dict = detailsAny as? [String: ProtoAnyCodable],
@@ -420,11 +420,19 @@ public actor GatewayChannelActor {
                 }
                 return nil
             }()
-
-            let decorated = (code == "NOT_PAIRED" && requestId?.isEmpty == false)
-                ? "\(msg) (requestId: \(requestId ?? ""))"
-                : msg
-            throw NSError(domain: "Gateway", code: 1008, userInfo: [NSLocalizedDescriptionKey: decorated])
+            let details: [String: AnyCodable] = (res.error ?? [:]).reduce(into: [:]) { acc, pair in
+                acc[pair.key] = AnyCodable(pair.value.value)
+            }
+            let decoratedMessage: String? = {
+                guard code == "NOT_PAIRED", let requestId, !requestId.isEmpty else { return msg }
+                let base = (msg ?? "gateway connect failed")
+                return "\(base) (requestId: \(requestId))"
+            }()
+            throw GatewayResponseError(
+                method: "connect",
+                code: code,
+                message: decoratedMessage ?? msg,
+                details: details)
         }
         guard let payload = res.payload else {
             throw NSError(
