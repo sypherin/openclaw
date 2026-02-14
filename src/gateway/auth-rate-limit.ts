@@ -1,248 +1,218 @@
 /**
- * SECURITY: Rate limiting for authentication attempts.
- * Prevents brute-force attacks by tracking failed authentication attempts
- * and applying exponential backoff with progressive lockout.
+ * In-memory sliding-window rate limiter for gateway authentication attempts.
+ *
+ * Tracks failed auth attempts by {scope, clientIp}. A scope lets callers keep
+ * independent counters for different credential classes (for example, shared
+ * gateway token/password vs device-token auth) while still sharing one
+ * limiter instance.
+ *
+ * Design decisions:
+ * - Pure in-memory Map – no external dependencies; suitable for a single
+ *   gateway process.  The Map is periodically pruned to avoid unbounded
+ *   growth.
+ * - Loopback addresses (127.0.0.1 / ::1) are exempt by default so that local
+ *   CLI sessions are never locked out.
+ * - The module is side-effect-free: callers create an instance via
+ *   {@link createAuthRateLimiter} and pass it where needed.
  */
 
-export type RateLimitConfig = {
-  /** Maximum attempts before lockout */
-  maxAttempts: number;
-  /** Time window in milliseconds for counting attempts */
-  windowMs: number;
-  /** Initial backoff delay in milliseconds */
-  baseBackoffMs: number;
-  /** Maximum backoff delay in milliseconds */
-  maxBackoffMs: number;
-  /** How long to keep lockout records after they expire */
-  cleanupIntervalMs: number;
-};
+import { isLoopbackAddress } from "./net.js";
 
-type AttemptRecord = {
-  /** Number of failed attempts in current window */
-  attempts: number;
-  /** Timestamp of first attempt in window */
-  windowStart: number;
-  /** Timestamp of last attempt */
-  lastAttempt: number;
-  /** Currently locked out until this timestamp */
-  lockedUntil: number;
-};
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-const DEFAULT_CONFIG: RateLimitConfig = {
-  maxAttempts: 5,
-  windowMs: 60_000, // 1 minute
-  baseBackoffMs: 1_000, // 1 second
-  maxBackoffMs: 300_000, // 5 minutes max lockout
-  cleanupIntervalMs: 600_000, // Clean up every 10 minutes
-};
+export interface RateLimitConfig {
+  /** Maximum failed attempts before blocking.  @default 10 */
+  maxAttempts?: number;
+  /** Sliding window duration in milliseconds.     @default 60_000 (1 min) */
+  windowMs?: number;
+  /** Lockout duration in milliseconds after the limit is exceeded.  @default 300_000 (5 min) */
+  lockoutMs?: number;
+  /** Exempt loopback (localhost) addresses from rate limiting.  @default true */
+  exemptLoopback?: boolean;
+}
 
-/**
- * In-memory rate limiter for authentication attempts.
- * Tracks attempts by client identifier (typically IP address).
- */
-export class AuthRateLimiter {
-  private records = new Map<string, AttemptRecord>();
-  private config: RateLimitConfig;
-  private cleanupTimer: NodeJS.Timeout | null = null;
+export const AUTH_RATE_LIMIT_SCOPE_DEFAULT = "default";
+export const AUTH_RATE_LIMIT_SCOPE_SHARED_SECRET = "shared-secret";
+export const AUTH_RATE_LIMIT_SCOPE_DEVICE_TOKEN = "device-token";
 
-  constructor(config: Partial<RateLimitConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
-    this.startCleanup();
+export interface RateLimitEntry {
+  /** Timestamps (epoch ms) of recent failed attempts inside the window. */
+  attempts: number[];
+  /** If set, requests from this IP are blocked until this epoch-ms instant. */
+  lockedUntil?: number;
+}
+
+export interface RateLimitCheckResult {
+  /** Whether the request is allowed to proceed. */
+  allowed: boolean;
+  /** Number of remaining attempts before the limit is reached. */
+  remaining: number;
+  /** Milliseconds until the lockout expires (0 when not locked). */
+  retryAfterMs: number;
+}
+
+export interface AuthRateLimiter {
+  /** Check whether `ip` is currently allowed to attempt authentication. */
+  check(ip: string | undefined, scope?: string): RateLimitCheckResult;
+  /** Record a failed authentication attempt for `ip`. */
+  recordFailure(ip: string | undefined, scope?: string): void;
+  /** Reset the rate-limit state for `ip` (e.g. after a successful login). */
+  reset(ip: string | undefined, scope?: string): void;
+  /** Return the current number of tracked IPs (useful for diagnostics). */
+  size(): number;
+  /** Remove expired entries and release memory. */
+  prune(): void;
+  /** Dispose the limiter and cancel periodic cleanup timers. */
+  dispose(): void;
+}
+
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
+
+const DEFAULT_MAX_ATTEMPTS = 10;
+const DEFAULT_WINDOW_MS = 60_000; // 1 minute
+const DEFAULT_LOCKOUT_MS = 300_000; // 5 minutes
+const PRUNE_INTERVAL_MS = 60_000; // prune stale entries every minute
+
+// ---------------------------------------------------------------------------
+// Implementation
+// ---------------------------------------------------------------------------
+
+export function createAuthRateLimiter(config?: RateLimitConfig): AuthRateLimiter {
+  const maxAttempts = config?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const windowMs = config?.windowMs ?? DEFAULT_WINDOW_MS;
+  const lockoutMs = config?.lockoutMs ?? DEFAULT_LOCKOUT_MS;
+  const exemptLoopback = config?.exemptLoopback ?? true;
+
+  const entries = new Map<string, RateLimitEntry>();
+
+  // Periodic cleanup to avoid unbounded map growth.
+  const pruneTimer = setInterval(() => prune(), PRUNE_INTERVAL_MS);
+  // Allow the Node.js process to exit even if the timer is still active.
+  if (pruneTimer.unref) {
+    pruneTimer.unref();
   }
 
-  /**
-   * Check if a client is currently rate limited.
-   * @param clientId - Identifier for the client (e.g., IP address)
-   * @returns Object indicating if allowed, and if not, how long to wait
-   */
-  check(clientId: string): { allowed: boolean; retryAfterMs?: number; attempts?: number } {
-    const now = Date.now();
-    const record = this.records.get(clientId);
+  function normalizeScope(scope: string | undefined): string {
+    return (scope ?? AUTH_RATE_LIMIT_SCOPE_DEFAULT).trim() || AUTH_RATE_LIMIT_SCOPE_DEFAULT;
+  }
 
-    if (!record) {
-      return { allowed: true };
+  function normalizeIp(ip: string | undefined): string {
+    return (ip ?? "").trim() || "unknown";
+  }
+
+  function resolveKey(
+    rawIp: string | undefined,
+    rawScope: string | undefined,
+  ): {
+    key: string;
+    ip: string;
+  } {
+    const ip = normalizeIp(rawIp);
+    const scope = normalizeScope(rawScope);
+    return { key: `${scope}:${ip}`, ip };
+  }
+
+  function isExempt(ip: string): boolean {
+    return exemptLoopback && isLoopbackAddress(ip);
+  }
+
+  function slideWindow(entry: RateLimitEntry, now: number): void {
+    const cutoff = now - windowMs;
+    // Remove attempts that fell outside the window.
+    entry.attempts = entry.attempts.filter((ts) => ts > cutoff);
+  }
+
+  function check(rawIp: string | undefined, rawScope?: string): RateLimitCheckResult {
+    const { key, ip } = resolveKey(rawIp, rawScope);
+    if (isExempt(ip)) {
+      return { allowed: true, remaining: maxAttempts, retryAfterMs: 0 };
     }
 
-    // Check if currently locked out
-    if (record.lockedUntil > now) {
+    const now = Date.now();
+    const entry = entries.get(key);
+
+    if (!entry) {
+      return { allowed: true, remaining: maxAttempts, retryAfterMs: 0 };
+    }
+
+    // Still locked out?
+    if (entry.lockedUntil && now < entry.lockedUntil) {
       return {
         allowed: false,
-        retryAfterMs: record.lockedUntil - now,
-        attempts: record.attempts,
+        remaining: 0,
+        retryAfterMs: entry.lockedUntil - now,
       };
     }
 
-    // Check if window has expired - reset if so
-    if (now - record.windowStart > this.config.windowMs) {
-      this.records.delete(clientId);
-      return { allowed: true };
+    // Lockout expired – clear it.
+    if (entry.lockedUntil && now >= entry.lockedUntil) {
+      entry.lockedUntil = undefined;
+      entry.attempts = [];
     }
 
-    // Check if at max attempts
-    if (record.attempts >= this.config.maxAttempts) {
-      // Calculate backoff based on how many times they've hit the limit
-      const lockoutCount = Math.floor(record.attempts / this.config.maxAttempts);
-      const backoffMs = Math.min(
-        this.config.baseBackoffMs * Math.pow(2, lockoutCount - 1),
-        this.config.maxBackoffMs,
-      );
-      record.lockedUntil = now + backoffMs;
-      return {
-        allowed: false,
-        retryAfterMs: backoffMs,
-        attempts: record.attempts,
-      };
-    }
-
-    return { allowed: true, attempts: record.attempts };
+    slideWindow(entry, now);
+    const remaining = Math.max(0, maxAttempts - entry.attempts.length);
+    return { allowed: remaining > 0, remaining, retryAfterMs: 0 };
   }
 
-  /**
-   * Record a failed authentication attempt.
-   * @param clientId - Identifier for the client (e.g., IP address)
-   */
-  recordFailure(clientId: string): void {
-    const now = Date.now();
-    const record = this.records.get(clientId);
-
-    if (!record) {
-      this.records.set(clientId, {
-        attempts: 1,
-        windowStart: now,
-        lastAttempt: now,
-        lockedUntil: 0,
-      });
+  function recordFailure(rawIp: string | undefined, rawScope?: string): void {
+    const { key, ip } = resolveKey(rawIp, rawScope);
+    if (isExempt(ip)) {
       return;
     }
 
-    // Reset window if expired
-    if (now - record.windowStart > this.config.windowMs) {
-      record.attempts = 1;
-      record.windowStart = now;
-      record.lockedUntil = 0;
-    } else {
-      record.attempts++;
-    }
-    record.lastAttempt = now;
-  }
-
-  /**
-   * Record a successful authentication (resets the failure count).
-   * @param clientId - Identifier for the client (e.g., IP address)
-   */
-  recordSuccess(clientId: string): void {
-    this.records.delete(clientId);
-  }
-
-  /**
-   * Get the current status for a client.
-   * @param clientId - Identifier for the client
-   */
-  getStatus(clientId: string): {
-    attempts: number;
-    isLocked: boolean;
-    lockedUntil?: number;
-  } {
-    const record = this.records.get(clientId);
-    if (!record) {
-      return { attempts: 0, isLocked: false };
-    }
     const now = Date.now();
-    return {
-      attempts: record.attempts,
-      isLocked: record.lockedUntil > now,
-      lockedUntil: record.lockedUntil > now ? record.lockedUntil : undefined,
-    };
+    let entry = entries.get(key);
+
+    if (!entry) {
+      entry = { attempts: [] };
+      entries.set(key, entry);
+    }
+
+    // If currently locked, do nothing (already blocked).
+    if (entry.lockedUntil && now < entry.lockedUntil) {
+      return;
+    }
+
+    slideWindow(entry, now);
+    entry.attempts.push(now);
+
+    if (entry.attempts.length >= maxAttempts) {
+      entry.lockedUntil = now + lockoutMs;
+    }
   }
 
-  /**
-   * Clean up expired records to prevent memory leaks.
-   */
-  private cleanup(): void {
-    const now = Date.now();
-    const expireThreshold = this.config.windowMs + this.config.maxBackoffMs;
+  function reset(rawIp: string | undefined, rawScope?: string): void {
+    const { key } = resolveKey(rawIp, rawScope);
+    entries.delete(key);
+  }
 
-    for (const [clientId, record] of this.records) {
-      const timeSinceLastAttempt = now - record.lastAttempt;
-      if (timeSinceLastAttempt > expireThreshold && record.lockedUntil <= now) {
-        this.records.delete(clientId);
+  function prune(): void {
+    const now = Date.now();
+    for (const [key, entry] of entries) {
+      // If locked out, keep the entry until the lockout expires.
+      if (entry.lockedUntil && now < entry.lockedUntil) {
+        continue;
+      }
+      slideWindow(entry, now);
+      if (entry.attempts.length === 0) {
+        entries.delete(key);
       }
     }
   }
 
-  private startCleanup(): void {
-    if (this.cleanupTimer) return;
-    this.cleanupTimer = setInterval(() => this.cleanup(), this.config.cleanupIntervalMs);
-    this.cleanupTimer.unref(); // Don't keep process alive for cleanup
+  function size(): number {
+    return entries.size;
   }
 
-  /**
-   * Stop the rate limiter and clean up resources.
-   */
-  stop(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-    this.records.clear();
+  function dispose(): void {
+    clearInterval(pruneTimer);
+    entries.clear();
   }
 
-  /**
-   * Get statistics about the rate limiter.
-   */
-  getStats(): { trackedClients: number; lockedClients: number } {
-    const now = Date.now();
-    let lockedClients = 0;
-    for (const record of this.records.values()) {
-      if (record.lockedUntil > now) {
-        lockedClients++;
-      }
-    }
-    return {
-      trackedClients: this.records.size,
-      lockedClients,
-    };
-  }
-}
-
-// Singleton instance for gateway authentication
-let gatewayAuthRateLimiter: AuthRateLimiter | null = null;
-
-/**
- * Get the singleton rate limiter for gateway authentication.
- */
-export function getGatewayAuthRateLimiter(): AuthRateLimiter {
-  if (!gatewayAuthRateLimiter) {
-    gatewayAuthRateLimiter = new AuthRateLimiter();
-  }
-  return gatewayAuthRateLimiter;
-}
-
-/**
- * Check if authentication is rate limited for a client.
- * @param clientIp - Client IP address
- * @returns Rate limit status
- */
-export function checkAuthRateLimit(clientIp: string): {
-  allowed: boolean;
-  retryAfterMs?: number;
-  attempts?: number;
-} {
-  return getGatewayAuthRateLimiter().check(clientIp);
-}
-
-/**
- * Record a failed authentication attempt.
- * @param clientIp - Client IP address
- */
-export function recordAuthFailure(clientIp: string): void {
-  getGatewayAuthRateLimiter().recordFailure(clientIp);
-}
-
-/**
- * Record a successful authentication (clears rate limit tracking).
- * @param clientIp - Client IP address
- */
-export function recordAuthSuccess(clientIp: string): void {
-  getGatewayAuthRateLimiter().recordSuccess(clientIp);
+  return { check, recordFailure, reset, size, prune, dispose };
 }

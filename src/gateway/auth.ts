@@ -2,7 +2,11 @@ import type { IncomingMessage } from "node:http";
 import type { GatewayAuthConfig, GatewayTailscaleMode } from "../config/config.js";
 import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
-import { checkAuthRateLimit, recordAuthFailure, recordAuthSuccess } from "./auth-rate-limit.js";
+import {
+  AUTH_RATE_LIMIT_SCOPE_SHARED_SECRET,
+  type AuthRateLimiter,
+  type RateLimitCheckResult,
+} from "./auth-rate-limit.js";
 import {
   isLoopbackAddress,
   isTrustedProxyAddress,
@@ -24,7 +28,9 @@ export type GatewayAuthResult = {
   method?: "token" | "password" | "tailscale" | "device-token";
   user?: string;
   reason?: string;
-  /** If rate limited, how long to wait before retrying (ms) */
+  /** Present when the request was blocked by the rate limiter. */
+  rateLimited?: boolean;
+  /** Milliseconds the client should wait before retrying (when rate-limited). */
   retryAfterMs?: number;
 };
 
@@ -224,23 +230,30 @@ export async function authorizeGatewayConnect(params: {
   req?: IncomingMessage;
   trustedProxies?: string[];
   tailscaleWhois?: TailscaleWhoisLookup;
-  /** Skip rate limiting (e.g., for local direct connections) */
-  skipRateLimit?: boolean;
+  /** Optional rate limiter instance; when provided, failed attempts are tracked per IP. */
+  rateLimiter?: AuthRateLimiter;
+  /** Client IP used for rate-limit tracking. Falls back to proxy-aware request IP resolution. */
+  clientIp?: string;
+  /** Optional limiter scope; defaults to shared-secret auth scope. */
+  rateLimitScope?: string;
 }): Promise<GatewayAuthResult> {
   const { auth, connectAuth, req, trustedProxies } = params;
   const tailscaleWhois = params.tailscaleWhois ?? readTailscaleWhoisIdentity;
   const localDirect = isLocalDirectRequest(req, trustedProxies);
 
-  // SECURITY: Check rate limiting for non-local connections
-  const clientIp = resolveRequestClientIp(req, trustedProxies) ?? "unknown";
-  const skipRateLimit = params.skipRateLimit ?? localDirect;
-  if (!skipRateLimit) {
-    const rateLimit = checkAuthRateLimit(clientIp);
-    if (!rateLimit.allowed) {
+  // --- Rate-limit gate ---
+  const limiter = params.rateLimiter;
+  const ip =
+    params.clientIp ?? resolveRequestClientIp(req, trustedProxies) ?? req?.socket?.remoteAddress;
+  const rateLimitScope = params.rateLimitScope ?? AUTH_RATE_LIMIT_SCOPE_SHARED_SECRET;
+  if (limiter) {
+    const rlCheck: RateLimitCheckResult = limiter.check(ip, rateLimitScope);
+    if (!rlCheck.allowed) {
       return {
         ok: false,
         reason: "rate_limited",
-        retryAfterMs: rateLimit.retryAfterMs,
+        rateLimited: true,
+        retryAfterMs: rlCheck.retryAfterMs,
       };
     }
   }
@@ -251,6 +264,8 @@ export async function authorizeGatewayConnect(params: {
       tailscaleWhois,
     });
     if (tailscaleCheck.ok) {
+      // Successful auth – reset rate-limit counter for this IP.
+      limiter?.reset(ip, rateLimitScope);
       return {
         ok: true,
         method: "tailscale",
@@ -261,57 +276,37 @@ export async function authorizeGatewayConnect(params: {
 
   if (auth.mode === "token") {
     if (!auth.token) {
-      if (!skipRateLimit) {
-        recordAuthFailure(clientIp);
-      }
       return { ok: false, reason: "token_missing_config" };
     }
     if (!connectAuth?.token) {
-      if (!skipRateLimit) {
-        recordAuthFailure(clientIp);
-      }
+      limiter?.recordFailure(ip, rateLimitScope);
       return { ok: false, reason: "token_missing" };
     }
     if (!safeEqualSecret(connectAuth.token, auth.token)) {
-      if (!skipRateLimit) {
-        recordAuthFailure(clientIp);
-      }
+      limiter?.recordFailure(ip, rateLimitScope);
       return { ok: false, reason: "token_mismatch" };
     }
-    if (!skipRateLimit) {
-      recordAuthSuccess(clientIp);
-    }
+    limiter?.reset(ip, rateLimitScope);
     return { ok: true, method: "token" };
   }
 
   if (auth.mode === "password") {
     const password = connectAuth?.password;
     if (!auth.password) {
-      if (!skipRateLimit) {
-        recordAuthFailure(clientIp);
-      }
       return { ok: false, reason: "password_missing_config" };
     }
     if (!password) {
-      if (!skipRateLimit) {
-        recordAuthFailure(clientIp);
-      }
+      limiter?.recordFailure(ip, rateLimitScope);
       return { ok: false, reason: "password_missing" };
     }
     if (!safeEqualSecret(password, auth.password)) {
-      if (!skipRateLimit) {
-        recordAuthFailure(clientIp);
-      }
+      limiter?.recordFailure(ip, rateLimitScope);
       return { ok: false, reason: "password_mismatch" };
     }
-    if (!skipRateLimit) {
-      recordAuthSuccess(clientIp);
-    }
+    limiter?.reset(ip, rateLimitScope);
     return { ok: true, method: "password" };
   }
 
-  if (!skipRateLimit) {
-    recordAuthFailure(clientIp);
-  }
+  limiter?.recordFailure(ip, rateLimitScope);
   return { ok: false, reason: "unauthorized" };
 }
