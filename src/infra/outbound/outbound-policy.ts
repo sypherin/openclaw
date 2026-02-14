@@ -182,7 +182,13 @@ export async function buildCrossContextDecoration(params: {
   const adapter = getChannelMessageAdapter(params.channel);
   const componentsBuilder = adapter.supportsComponentsV2
     ? adapter.buildCrossContextComponents
-      ? (message: string) => adapter.buildCrossContextComponents!(originLabel, message)
+      ? (message: string) =>
+          adapter.buildCrossContextComponents!({
+            originLabel,
+            message,
+            cfg: params.cfg,
+            accountId: params.accountId ?? undefined,
+          })
       : undefined
     : undefined;
 

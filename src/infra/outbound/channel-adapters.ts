@@ -1,23 +1,31 @@
-import { Container, Separator, TextDisplay, type TopLevelComponents } from "@buape/carbon";
+import { Separator, TextDisplay, type TopLevelComponents } from "@buape/carbon";
 import type { ChannelId } from "../../channels/plugins/types.js";
+import type { OpenClawConfig } from "../../config/config.js";
+import { DiscordUiContainer } from "../../discord/ui.js";
 
-export type CrossContextComponentsBuilder = (
-  originLabel: string,
-  message: string,
-) => TopLevelComponents[];
+export type CrossContextComponentsBuilder = (message: string) => TopLevelComponents[];
+
+export type CrossContextComponentsFactory = (params: {
+  originLabel: string;
+  message: string;
+  cfg: OpenClawConfig;
+  accountId?: string | null;
+}) => TopLevelComponents[];
 
 export type ChannelMessageAdapter = {
   supportsComponentsV2: boolean;
-  buildCrossContextComponents?: CrossContextComponentsBuilder;
+  buildCrossContextComponents?: CrossContextComponentsFactory;
 };
 
 type CrossContextContainerParams = {
   originLabel: string;
   message: string;
+  cfg: OpenClawConfig;
+  accountId?: string | null;
 };
 
-class CrossContextContainer extends Container {
-  constructor({ originLabel, message }: CrossContextContainerParams) {
+class CrossContextContainer extends DiscordUiContainer {
+  constructor({ originLabel, message, cfg, accountId }: CrossContextContainerParams) {
     const trimmed = message.trim();
     const components = [] as Array<TextDisplay | Separator>;
     if (trimmed) {
@@ -25,7 +33,7 @@ class CrossContextContainer extends Container {
       components.push(new Separator({ divider: true, spacing: "small" }));
     }
     components.push(new TextDisplay(`*From ${originLabel}*`));
-    super(components, { accentColor: "#5865F2" });
+    super({ cfg, accountId, components });
   }
 }
 
@@ -35,8 +43,8 @@ const DEFAULT_ADAPTER: ChannelMessageAdapter = {
 
 const DISCORD_ADAPTER: ChannelMessageAdapter = {
   supportsComponentsV2: true,
-  buildCrossContextComponents: (originLabel: string, message: string) => [
-    new CrossContextContainer({ originLabel, message }),
+  buildCrossContextComponents: ({ originLabel, message, cfg, accountId }) => [
+    new CrossContextContainer({ originLabel, message, cfg, accountId }),
   ],
 };
 
