@@ -1,5 +1,6 @@
 import type { RESTAPIPoll } from "discord-api-types/rest/v10";
 import {
+  Embed,
   RequestClient,
   serializePayload,
   type MessagePayloadFile,
@@ -7,7 +8,7 @@ import {
   type TopLevelComponents,
 } from "@buape/carbon";
 import { PollLayoutType } from "discord-api-types/payloads/v10";
-import { Routes } from "discord-api-types/v10";
+import { Routes, type APIEmbed } from "discord-api-types/v10";
 import type { ChunkMode } from "../auto-reply/chunk.js";
 import type { RetryRunner } from "../infra/retry-policy.js";
 import { loadConfig } from "../config/config.js";
@@ -31,6 +32,7 @@ type DiscordRequest = RetryRunner;
 
 export type DiscordSendComponentFactory = (text: string) => TopLevelComponents[];
 export type DiscordSendComponents = TopLevelComponents[] | DiscordSendComponentFactory;
+export type DiscordSendEmbeds = Array<APIEmbed | Embed>;
 
 type DiscordRecipient =
   | {
@@ -278,19 +280,41 @@ export function resolveDiscordSendComponents(params: {
     : params.components;
 }
 
+function normalizeDiscordEmbeds(embeds?: DiscordSendEmbeds): Embed[] | undefined {
+  if (!embeds?.length) {
+    return undefined;
+  }
+  return embeds.map((embed) => (embed instanceof Embed ? embed : new Embed(embed)));
+}
+
+export function resolveDiscordSendEmbeds(params: {
+  embeds?: DiscordSendEmbeds;
+  isFirst: boolean;
+}): Embed[] | undefined {
+  if (!params.embeds || !params.isFirst) {
+    return undefined;
+  }
+  return normalizeDiscordEmbeds(params.embeds);
+}
+
 export function buildDiscordMessagePayload(params: {
   text: string;
   components?: TopLevelComponents[];
+  embeds?: Embed[];
   flags?: number;
   files?: MessagePayloadFile[];
 }): MessagePayloadObject {
   const payload: MessagePayloadObject = {};
+  const hasV2 = hasV2Components(params.components);
   const trimmed = params.text.trim();
-  if (!hasV2Components(params.components) && trimmed) {
+  if (!hasV2 && trimmed) {
     payload.content = params.text;
   }
   if (params.components?.length) {
     payload.components = params.components;
+  }
+  if (!hasV2 && params.embeds?.length) {
+    payload.embeds = params.embeds;
   }
   if (params.flags !== undefined) {
     payload.flags = params.flags;
@@ -313,6 +337,7 @@ async function sendDiscordText(
   request: DiscordRequest,
   maxLinesPerMessage?: number,
   components?: DiscordSendComponents,
+  embeds?: DiscordSendEmbeds,
   chunkMode?: ChunkMode,
   silent?: boolean,
 ) {
@@ -328,9 +353,11 @@ async function sendDiscordText(
       text: chunk,
       isFirst,
     });
+    const chunkEmbeds = resolveDiscordSendEmbeds({ embeds, isFirst });
     const payload = buildDiscordMessagePayload({
       text: chunk,
       components: chunkComponents,
+      embeds: chunkEmbeds,
       flags,
     });
     const body = stripUndefinedFields({
@@ -369,6 +396,7 @@ async function sendDiscordMedia(
   request: DiscordRequest,
   maxLinesPerMessage?: number,
   components?: DiscordSendComponents,
+  embeds?: DiscordSendEmbeds,
   chunkMode?: ChunkMode,
   silent?: boolean,
 ) {
@@ -390,9 +418,11 @@ async function sendDiscordMedia(
     text: caption,
     isFirst: true,
   });
+  const captionEmbeds = resolveDiscordSendEmbeds({ embeds, isFirst: true });
   const payload = buildDiscordMessagePayload({
     text: caption,
     components: captionComponents,
+    embeds: captionEmbeds,
     flags,
     files: [
       {
@@ -422,6 +452,7 @@ async function sendDiscordMedia(
       undefined,
       request,
       maxLinesPerMessage,
+      undefined,
       undefined,
       chunkMode,
       silent,
