@@ -639,9 +639,10 @@ function createButtonComponent(params: {
     if (!params.spec.url) {
       throw new Error("Link buttons require a url");
     }
+    const linkUrl = params.spec.url;
     class DynamicLinkButton extends LinkButton {
       label = params.spec.label;
-      url = params.spec.url;
+      url = linkUrl;
     }
     return { component: new DynamicLinkButton() };
   }
