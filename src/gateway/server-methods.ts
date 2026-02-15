@@ -32,7 +32,6 @@ const WRITE_SCOPE = "operator.write";
 const APPROVALS_SCOPE = "operator.approvals";
 const PAIRING_SCOPE = "operator.pairing";
 
-<<<<<<< HEAD
 const APPROVAL_METHODS = new Set([
   "exec.approval.request",
   "exec.approval.waitDecision",
