@@ -97,24 +97,26 @@ private func withUserDefaults<T>(_ updates: [String: Any?], _ body: () throws ->
 
     @Test @MainActor func loadLastConnectionReadsSavedValues() {
         withUserDefaults([
-            "gateway.lastHost": "gateway.example.com",
-            "gateway.lastPort": 443,
-            "gateway.lastTls": true,
+            "gateway.last.kind": "manual",
+            "gateway.last.host": "gateway.example.com",
+            "gateway.last.port": 443,
+            "gateway.last.tls": true,
+            "gateway.last.stableID": "manual|gateway.example.com|443",
         ]) {
-            let loaded = GatewayConnectionController.loadLastConnection(defaults: .standard)
-            #expect(loaded?.host == "gateway.example.com")
-            #expect(loaded?.port == 443)
-            #expect(loaded?.useTLS == true)
+            let loaded = GatewaySettingsStore.loadLastGatewayConnection()
+            #expect(loaded == .manual(host: "gateway.example.com", port: 443, useTLS: true, stableID: "manual|gateway.example.com|443"))
         }
     }
 
     @Test @MainActor func loadLastConnectionReturnsNilForInvalidData() {
         withUserDefaults([
-            "gateway.lastHost": "",
-            "gateway.lastPort": 0,
-            "gateway.lastTls": false,
+            "gateway.last.kind": "manual",
+            "gateway.last.host": "",
+            "gateway.last.port": 0,
+            "gateway.last.tls": false,
+            "gateway.last.stableID": "manual|invalid|0",
         ]) {
-            let loaded = GatewayConnectionController.loadLastConnection(defaults: .standard)
+            let loaded = GatewaySettingsStore.loadLastGatewayConnection()
             #expect(loaded == nil)
         }
     }
