@@ -1823,6 +1823,9 @@ extension NodeAppModel {
             await self?.talkMode.reloadConfig()
         }
     }
+
+    /// Back-compat hook retained for older gateway-connect flows.
+    func onNodeGatewayConnected() async {}
 }
 
 #if DEBUG
