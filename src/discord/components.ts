@@ -636,9 +636,12 @@ function createButtonComponent(params: {
   const style = mapButtonStyle(params.spec.style);
   const isLink = style === ButtonStyle.Link || Boolean(params.spec.url);
   if (isLink) {
+    if (!params.spec.url) {
+      throw new Error("Link buttons require a url");
+    }
     class DynamicLinkButton extends LinkButton {
       label = params.spec.label;
-      url = params.spec.url ?? "";
+      url = params.spec.url;
     }
     return { component: new DynamicLinkButton() };
   }
