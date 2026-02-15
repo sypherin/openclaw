@@ -92,4 +92,5 @@ docs/hooks/soul-evil.md
 docs/zh-CN/hooks/soul-evil.md
 dist/hooks/bundled/soul-evil/
 **/SOUL_EVIL.md
-local/
+/local/
+package-lock.json
