@@ -25,6 +25,67 @@ If you want a personal, single-user assistant that feels local, fast, and always
 
 [Website](https://openclaw.ai) · [Docs](https://docs.openclaw.ai) · [DeepWiki](https://deepwiki.com/openclaw/openclaw) · [Getting Started](https://docs.openclaw.ai/start/getting-started) · [Updating](https://docs.openclaw.ai/install/updating) · [Showcase](https://docs.openclaw.ai/start/showcase) · [FAQ](https://docs.openclaw.ai/start/faq) · [Wizard](https://docs.openclaw.ai/start/wizard) · [Nix](https://github.com/openclaw/nix-openclaw) · [Docker](https://docs.openclaw.ai/install/docker) · [Discord](https://discord.gg/clawd)
 
+---
+
+## Fork Customizations (`sypherin/openclaw`)
+
+This fork ([sypherin/openclaw](https://github.com/sypherin/openclaw)) extends upstream with the following changes, regularly synced with [openclaw/openclaw](https://github.com/openclaw/openclaw).
+
+### NVIDIA NIM Model Support
+
+Added compatibility for NVIDIA NIM models that upstream doesn't natively support:
+
+- **GLM-5 / GLM-4.7** (THUDM) — empty tool call filter strips garbage `tool_calls` arrays; assistant content forced to plain string to prevent JSON mimicking
+- **Kimi K2.5** (Moonshot) — reasoning-to-text fallback promotes thinking blocks when no text content is returned
+- **Qwen3-Next-80B**, **Nemotron-3-Nano**, **DeepSeek V3.1-Terminus** — added to model registry
+
+Key changes:
+
+- `feat: add pi-ai post-install patch script for NVIDIA model compat` — patches `@mariozechner/pi-ai` openai-completions.js across all installed versions with 4 fixes (plain string content, empty tool call filter, reasoning fallback, 120s per-request timeout). Run `scripts/apply-pi-ai-patches.sh` after `pnpm install`.
+- `fix: hook loading + remove custom NVIDIA stream routing` — removed custom `nvidia-reasoning-stream` StreamFn routing so all non-Ollama models use standard `streamSimple`, which properly forwards `tools`/`tool_choice` params to the API.
+
+### Security Hardening
+
+- **Prompt injection guardrails** — detection layer wired into the agent flow to catch injection attempts in inbound messages
+- **RateLimiter memory leak fix** — patched leak in the rate limiter and replaced empty `catch` blocks with proper logging
+- **Security tests** — added test coverage for security-critical paths
+- **Malicious hook removal** — removed `soul-evil` hook and blocked it from the fork
+- **Non-admin status redaction** — sensitive status details are now redacted for non-admin scopes
+
+### Hook System Fixes
+
+- **`__exportAll` circular dependency fix** (`fix-hook-circular-deps.sh`) — post-build patch that handles multiple `pi-embedded` chunks and dynamic export aliases. Fixes `boot-md` and `session-memory` hooks failing with `"__exportAll is not a function"`. Related upstream issue: [#13662](https://github.com/openclaw/openclaw/issues/13662)
+- **Plugin SDK alias fix** — prefers source `plugin-sdk` alias to avoid `jiti` circular import crash
+
+### Stability & Bug Fixes
+
+- **LLM rate limit circuit breaker** — replaced retry loop with circuit breaker pattern + failover notifications
+- **`<think>` tag leakage** — prevented thinking block content from leaking into streamed output
+- **Android cleartext config** — fixed cleartext traffic configuration for Android gateway
+- **Merge conflict resolution** — clean merges maintained across 7 upstream syncs (Jan 30 — Feb 15)
+
+### Additional Features
+
+- **Himalaya email skill** — OAuth2 email integration via [himalaya](https://github.com/pimalaya/himalaya) with draft save support
+- **Instagram posting skill** — `late-api` skill for automated Instagram posting
+- **Configurable heartbeat session** — customizable heartbeat interval
+- **Discord `allowBots` config** — option to allow bot messages in Discord channels ([#802](https://github.com/sypherin/openclaw/pull/802))
+- **Docker cache optimization** — dependency layer caching for faster rebuilds ([#605](https://github.com/sypherin/openclaw/pull/605))
+
+### Upstream Sync
+
+This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-15**.
+
+```bash
+# To sync with upstream
+git fetch upstream
+git merge upstream/main
+pnpm install && pnpm build
+./scripts/apply-pi-ai-patches.sh  # re-apply NVIDIA patches
+```
+
+---
+
 Preferred setup: run the onboarding wizard (`openclaw onboard`) in your terminal.
 The wizard guides you step by step through setting up the gateway, workspace, channels, and skills. The CLI wizard is the recommended path and works on **macOS, Linux, and Windows (via WSL2; strongly recommended)**.
 Works with npm, pnpm, or bun.
