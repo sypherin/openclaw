@@ -31,10 +31,6 @@ import { resolveOpenClawDocsPath } from "../../docs-path.js";
 import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
-import {
-  createNvidiaReasoningStreamFn,
-  isNvidiaReasoningModel,
-} from "../../nvidia-reasoning-stream.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
 import {
   isCloudCodeAssistFormatError,
@@ -604,10 +600,6 @@ export async function runEmbeddedAttempt(
           typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl.trim() : "";
         const ollamaBaseUrl = modelBaseUrl || providerBaseUrl || OLLAMA_NATIVE_BASE_URL;
         activeSession.agent.streamFn = createOllamaStreamFn(ollamaBaseUrl);
-      } else if (isNvidiaReasoningModel(params.provider, params.modelId)) {
-        // NVIDIA GLM reasoning models return text in `reasoning_content` instead
-        // of `content`. Use a custom StreamFn that maps the field.
-        activeSession.agent.streamFn = createNvidiaReasoningStreamFn();
       } else {
         // Force a stable streamFn reference so vitest can reliably mock @mariozechner/pi-ai.
         activeSession.agent.streamFn = streamSimple;
