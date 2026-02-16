@@ -249,6 +249,18 @@ export async function runNodeMain(params = {}) {
   if (buildRes.exitCode !== 0 && buildRes.exitCode !== null) {
     return buildRes.exitCode;
   }
+
+  // Run post-build fix for hook circular dependency (__exportAll)
+  const fixScript = path.join(deps.cwd, "scripts", "fix-hook-circular-deps.sh");
+  if (deps.fs.existsSync(fixScript)) {
+    const fix = deps.spawn("bash", [fixScript], {
+      cwd: deps.cwd,
+      env: deps.env,
+      stdio: "inherit",
+    });
+    await new Promise((resolve) => fix.on("exit", resolve));
+  }
+
   writeBuildStamp(deps);
   return await runOpenClaw(deps);
 }

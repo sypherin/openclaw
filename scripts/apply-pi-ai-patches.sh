@@ -7,6 +7,9 @@
 #   2. Empty tool call filter — strips toolCall blocks with empty names (NVIDIA GLM-5 bug)
 #   3. Reasoning→text fallback — promotes thinking blocks to text when no text/tool blocks exist
 #   4. 120s per-request timeout — enables faster failover instead of 10-min default hang
+#   5. Kimi K2.5 tool call ID normalization — uses functions.name:idx format (4x reliability)
+#   6. Text-to-tool-call fallback parser — recovers tool calls output as text content
+#   7. Strip reasoning_content from history — prevents format contamination + saves tokens
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -161,6 +164,156 @@ else:
         print("  [4/4] Applied: 120s timeout")
     else:
         print("  [4/4] WARNING: Could not find OpenAI client constructor to patch")
+
+# ============================================================
+# PATCH 5: Kimi K2.5 tool call ID normalization
+# ============================================================
+# Kimi K2.5 expects tool_call IDs in `functions.name:idx` format.
+# Non-standard IDs (like call_xxx) cause 4x lower tool call success.
+# Source: vLLM blog "Chasing 100% Accuracy with Kimi K2" (2025/10/28)
+# We normalize IDs in outbound messages when the model contains "kimi".
+
+KIMI_MARKER = '// Normalize tool_call IDs for Kimi K2.x compatibility'
+
+if KIMI_MARKER in code:
+    print("  [5/7] Already applied: Kimi tool call ID normalization")
+else:
+    # Insert before the final `return { params }` or after tool_calls mapping
+    # We add a post-processing step that rewrites IDs for Kimi models
+    kimi_patch = '''
+            // Normalize tool_call IDs for Kimi K2.x compatibility
+            // Kimi expects IDs in "functions.name:idx" format; non-standard IDs
+            // cause ~4x lower tool call success rate (vLLM blog, Oct 2025).
+            if (model.id && model.id.toLowerCase().includes("kimi")) {
+                let kimiToolIdx = 0;
+                for (const p of params) {
+                    if (p.role === "assistant" && p.tool_calls) {
+                        for (const tc of p.tool_calls) {
+                            const fname = tc.function?.name || "unknown";
+                            tc.id = "functions." + fname + ":" + kimiToolIdx;
+                            kimiToolIdx++;
+                        }
+                    }
+                    if (p.role === "tool" && p.tool_call_id) {
+                        // Find matching assistant tool_call to get normalized ID
+                        for (const prev of params) {
+                            if (prev.role === "assistant" && prev.tool_calls) {
+                                for (const tc of prev.tool_calls) {
+                                    const fname = tc.function?.name || "";
+                                    if (p.tool_call_id === tc.id || p.name === fname) {
+                                        p.tool_call_id = tc.id;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }'''
+
+    # Insert right before `return params;` in convertMessages()
+    # Use a unique anchor: the for-loop end + return that only appears in convertMessages()
+    insert_target = '        lastRole = msg.role;\n    }\n    return params;\n}'
+    if insert_target in code:
+        code = code.replace(insert_target, '        lastRole = msg.role;\n    }\n' + kimi_patch + '\n    return params;\n}', 1)
+        changed = True
+        print("  [5/7] Applied: Kimi tool call ID normalization")
+    else:
+        print("  [5/7] WARNING: Could not find insertion point for Kimi patch")
+
+# ============================================================
+# PATCH 6: Text-to-tool-call fallback parser
+# ============================================================
+# Some models (DeepSeek on NIM) output tool calls as JSON text
+# in the content field instead of the structured tool_calls field.
+# This adds a regex fallback that extracts tool calls from text.
+# Source: NVIDIA Developer Forums, Roo-Code Issue #10349
+
+TEXTPARSE_MARKER = '// Fallback: extract tool calls from text content'
+
+if TEXTPARSE_MARKER in code:
+    print("  [6/7] Already applied: text-to-tool-call fallback parser")
+else:
+    textparse_patch = '''            // Fallback: extract tool calls from text content when model outputs
+            // tool calls as JSON text instead of structured tool_calls field.
+            // Common with DeepSeek on NVIDIA NIM and some other open models.
+            if (!hasToolCall && hasTextBlock) {
+                const allText = output.content
+                    .filter(b => b.type === "text")
+                    .map(b => b.text)
+                    .join("");
+                // Match JSON patterns like {"name":"func","arguments":{...}} or
+                // {"tool_call":"func","arguments":{...}} in the text output
+                const toolJsonPattern = /\\{\\s*(?:"(?:name|tool_call|function)"\\s*:\\s*"([^"]+)"\\s*,\\s*"(?:arguments|parameters)"\\s*:\\s*(\\{[^}]*\\})|"(?:arguments|parameters)"\\s*:\\s*(\\{[^}]*\\})\\s*,\\s*"(?:name|tool_call|function)"\\s*:\\s*"([^"]+)")\\s*\\}/g;
+                let toolMatch;
+                let extractedTools = [];
+                while ((toolMatch = toolJsonPattern.exec(allText)) !== null) {
+                    const funcName = toolMatch[1] || toolMatch[4];
+                    const funcArgs = toolMatch[2] || toolMatch[3];
+                    if (funcName && context.tools?.some(t => t.name === funcName)) {
+                        try {
+                            const parsedArgs = JSON.parse(funcArgs);
+                            extractedTools.push({
+                                type: "toolCall",
+                                id: "extracted_" + funcName + "_" + extractedTools.length,
+                                name: funcName,
+                                arguments: parsedArgs,
+                            });
+                        } catch(e) { /* skip unparseable */ }
+                    }
+                }
+                if (extractedTools.length > 0) {
+                    // Replace text content with extracted tool calls
+                    output.content = output.content.filter(b => b.type !== "text");
+                    for (const tc of extractedTools) {
+                        output.content.push(tc);
+                        stream.push({ type: "tool_call_start", contentIndex: output.content.length - 1, partial: output });
+                    }
+                }
+            }'''
+
+    # Insert after the reasoning→text fallback block (after the closing `}` of that block)
+    reasoning_end = "                }\n            }\n            if (options?.signal?.aborted)"
+    if reasoning_end in code:
+        code = code.replace(reasoning_end, "                }\n            }\n" + textparse_patch + "\n            if (options?.signal?.aborted)", 1)
+        changed = True
+        print("  [6/7] Applied: text-to-tool-call fallback parser")
+    else:
+        print("  [6/7] WARNING: Could not find insertion point for text-to-tool-call parser")
+
+# ============================================================
+# PATCH 7: Strip reasoning_content from historical messages
+# ============================================================
+# DeepSeek docs explicitly say reasoning_content from previous
+# turns should NOT be included in context. Including it causes:
+# (a) 30-60% extra token waste, (b) format contamination where
+# the model mimics the reasoning format in output.
+# Source: DeepSeek API docs (thinking_mode), OpenCode Issue #5577
+
+STRIP_MARKER = '// Strip reasoning_content from historical assistant messages'
+
+if STRIP_MARKER in code:
+    print("  [7/7] Already applied: strip reasoning_content from history")
+else:
+    strip_patch = '''        // Strip reasoning_content from historical assistant messages.
+        // DeepSeek docs state CoT from previous turns should NOT be sent.
+        // Including it wastes 30-60% tokens and causes format contamination.
+        for (const p of params) {
+            if (p.role === "assistant") {
+                delete p.reasoning_content;
+                delete p.reasoning_details;
+            }
+        }'''
+
+    # Insert right before `return params;` in convertMessages()
+    # Use unique anchor that only matches convertMessages(), not buildParams()
+    insert_target = '        lastRole = msg.role;\n    }\n    return params;\n}'
+    if insert_target in code:
+        code = code.replace(insert_target, '        lastRole = msg.role;\n    }\n' + strip_patch + '\n    return params;\n}', 1)
+        changed = True
+        print("  [7/7] Applied: strip reasoning_content from history")
+    else:
+        print("  [7/7] WARNING: Could not find insertion point for reasoning strip")
 
 if changed:
     with open(filepath, 'w') as f:

@@ -51,21 +51,24 @@ var __exportAll = (all, no_symbols) => {
 export { __exportAll };
 HELPER_EOF
 
-# Redirect imports in affected files for ALL pi-embedded chunks
+# Redirect ALL imports of __exportAll from any pi-embedded chunk to __exportAll.js.
+# Uses find to cover subdirectories (plugin-sdk/, bundled/, etc.) and handles
+# both relative paths ("./pi-embedded-*" and "../pi-embedded-*").
 COUNT=0
-for PI_EMBEDDED in $PI_CHUNKS; do
-  PI_BASENAME=$(basename "$PI_EMBEDDED")
-  AFFECTED_FILES=$(grep -rl "import.*__exportAll.*from.*\"./${PI_BASENAME}\"" "$DIST_DIR"/*.js 2>/dev/null || true)
-  for f in $AFFECTED_FILES; do
-    BASENAME=$(basename "$f")
-    # Replace: import { XX as __exportAll } from "./pi-embedded-XXXX.js";
-    # With:    import { __exportAll } from "./__exportAll.js";
-    # The alias (XX) changes each build, so use a regex to match any alias.
-    if sed -i -E "s|import \{ [A-Za-z0-9_]+ as __exportAll \} from \"\.\/${PI_BASENAME//./\\.}\";|import { __exportAll } from \"./__exportAll.js\";|" "$f"; then
+while IFS= read -r f; do
+  # Compute the relative path from the file's directory to $DIST_DIR/__exportAll.js
+  FILE_DIR=$(dirname "$f")
+  REL_PREFIX=$(python3 -c "import os.path; print(os.path.relpath('$DIST_DIR', '$FILE_DIR'))")
+  REPLACEMENT="import { __exportAll } from \"${REL_PREFIX}/__exportAll.js\";"
+  # Replace any: import { XX as __exportAll } from "./pi-embedded-XXXX.js";
+  # or:          import { XX as __exportAll } from "../pi-embedded-XXXX.js";
+  if sed -i -E "s|import \{ [A-Za-z0-9_]+ as __exportAll \} from \"[^\"]*pi-embedded-[^\"]*\.js\";|${REPLACEMENT}|g" "$f"; then
+    # Verify the replacement actually changed the file
+    if ! grep -q 'pi-embedded.*__exportAll' "$f" 2>/dev/null; then
       COUNT=$((COUNT + 1))
-      echo "  Fixed: $BASENAME"
+      echo "  Fixed: $(basename "$f")"
     fi
-  done
-done
+  fi
+done < <(grep -rl 'import.*__exportAll.*from.*pi-embedded' "$DIST_DIR" --include='*.js' 2>/dev/null || true)
 
 echo "Done: patched $COUNT files, created __exportAll.js"

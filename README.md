@@ -42,8 +42,9 @@ Added compatibility for NVIDIA NIM models that upstream doesn't natively support
 
 Key changes:
 
-- `feat: add pi-ai post-install patch script for NVIDIA model compat` — patches `@mariozechner/pi-ai` openai-completions.js across all installed versions with 4 fixes (plain string content, empty tool call filter, reasoning fallback, 120s per-request timeout). Run `scripts/apply-pi-ai-patches.sh` after `pnpm install`.
+- `feat: add pi-ai post-install patch script for NVIDIA model compat` — patches `@mariozechner/pi-ai` openai-completions.js across all installed versions with 7 fixes (plain string content, empty tool call filter, reasoning fallback, 120s per-request timeout, Kimi K2.5 tool call ID normalization, text-to-tool-call fallback parser, strip `reasoning_content` from history). Run `scripts/apply-pi-ai-patches.sh` after `pnpm install`.
 - `fix: hook loading + remove custom NVIDIA stream routing` — removed custom `nvidia-reasoning-stream` StreamFn routing so all non-Ollama models use standard `streamSimple`, which properly forwards `tools`/`tool_choice` params to the API.
+- **Qwen3 `/no_think` directive** — auto-injects `/no_think` into system prompt when model name contains "qwen", reducing false safety refusals and improving tool call reliability.
 
 ### Security Hardening
 
@@ -55,7 +56,7 @@ Key changes:
 
 ### Hook System Fixes
 
-- **`__exportAll` circular dependency fix** (`fix-hook-circular-deps.sh`) — post-build patch that handles multiple `pi-embedded` chunks and dynamic export aliases. Fixes `boot-md` and `session-memory` hooks failing with `"__exportAll is not a function"`. Related upstream issue: [#13662](https://github.com/openclaw/openclaw/issues/13662)
+- **`__exportAll` circular dependency fix** (`fix-hook-circular-deps.sh`) — post-build patch that handles multiple `pi-embedded` chunks and dynamic export aliases across all subdirectories (`dist/`, `plugin-sdk/`, `bundled/`). Fixes `boot-md` and `session-memory` hooks failing with `"__exportAll is not a function"`. Also integrated into `run-node.mjs` so the fix runs automatically on dev builds (not just `pnpm build`). Related upstream issue: [#13662](https://github.com/openclaw/openclaw/issues/13662)
 - **Plugin SDK alias fix** — prefers source `plugin-sdk` alias to avoid `jiti` circular import crash
 
 ### Stability & Bug Fixes
@@ -64,6 +65,13 @@ Key changes:
 - **`<think>` tag leakage** — prevented thinking block content from leaking into streamed output
 - **Android cleartext config** — fixed cleartext traffic configuration for Android gateway
 - **Merge conflict resolution** — clean merges maintained across 7 upstream syncs (Jan 30 — Feb 15)
+
+### Smart Model Routing & Context Optimization
+
+- **Content-aware model routing** (`smart-routing.ts`) — classifies inbound messages as `simple`, `tool_heavy`, `reasoning`, or `code` and pre-routes to the best model before the sequential fallback chain. Configurable via `agents.defaults.model.routing` in `openclaw.json`.
+- **Heartbeat transcript pruning** (`heartbeat-pruning.ts`) — strips `HEARTBEAT_OK` poll/ack pairs from session history to save context tokens.
+- **Per-tool softTrim context pruning** — tool-specific `maxChars`/`headChars`/`tailChars` overrides in `agents.defaults.contextPruning.toolOverrides` (e.g., tighter limits for `exec` and `web_fetch`, more generous for `read`).
+- **Instructor pattern for tool errors** — enriches tool call error results with `expected_params`, `required_params`, and `retry_hint` to help models self-correct on retry.
 
 ### Additional Features
 
