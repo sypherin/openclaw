@@ -37,7 +37,8 @@ Added compatibility for NVIDIA NIM models that upstream doesn't natively support
 
 - **GLM-5 / GLM-4.7** (THUDM) — empty tool call filter strips garbage `tool_calls` arrays; assistant content forced to plain string to prevent JSON mimicking
 - **Kimi K2.5** (Moonshot) — reasoning-to-text fallback promotes thinking blocks when no text content is returned
-- **Qwen3-Next-80B**, **Nemotron-3-Nano**, **DeepSeek V3.1-Terminus** — added to model registry
+- **DeepSeek V3.2** — added to model registry via NVIDIA NIM
+- **QwQ-32B**, **Qwen3-Coder-Next** — local model support via llama.cpp and Lemonade
 
 Key changes:
 

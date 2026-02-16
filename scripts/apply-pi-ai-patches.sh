@@ -64,8 +64,32 @@ if old_assistant in code:
     code = code.replace(old_assistant, new_assistant)
     changed = True
     print("  [1/4] Applied: assistant content as string")
-elif 'assistantMsg.content = nonEmptyTextBlocks.map((b) => sanitizeSurrogates(b.text)).join("")' in code:
+elif 'Send assistant content as a plain string for all providers' in code:
     print("  [1/4] Already applied: assistant content as string")
+elif 'return { type: "text", text: sanitizeSurrogates(b.text) }' in code:
+    # Whitespace mismatch — try regex replacement
+    pattern = re.compile(
+        r'([ \t]*)(?://.*?\n\s*)?if \(model\.provider === "github-copilot"\) \{\s*'
+        r'assistantMsg\.content = nonEmptyTextBlocks\.map\(\(b\) => sanitizeSurrogates\(b\.text\)\)\.join\(""\);\s*\}'
+        r'\s*else \{\s*assistantMsg\.content = nonEmptyTextBlocks\.map\(\(b\) => \{'
+        r'\s*return \{ type: "text", text: sanitizeSurrogates\(b\.text\) \};\s*\}\);\s*\}',
+        re.DOTALL
+    )
+    match = pattern.search(code)
+    if match:
+        indent = match.group(1)
+        replacement = (
+            f'{indent}// Send assistant content as a plain string for all providers.\n'
+            f'{indent}// Array format [{{"type":"text","text":"..."}}] causes some models\n'
+            f'{indent}// (DeepSeek, etc.) to mimic the JSON structure in their responses.\n'
+            f'{indent}// String content is always valid for text-only messages in the OpenAI API.\n'
+            f'{indent}assistantMsg.content = nonEmptyTextBlocks.map((b) => sanitizeSurrogates(b.text)).join("");'
+        )
+        code = code[:match.start()] + replacement + code[match.end():]
+        changed = True
+        print("  [1/4] Applied (regex): assistant content as string")
+    else:
+        print("  [1/4] WARNING: Found array format but regex didn't match — patch manually")
 else:
     print("  [1/4] WARNING: Could not find assistant content pattern to patch")
 
