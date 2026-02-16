@@ -76,6 +76,7 @@ import {
   sanitizeSessionHistory,
   sanitizeToolsForGoogle,
 } from "../google.js";
+import { pruneHeartbeatTurns } from "../heartbeat-pruning.js";
 import { getDmHistoryLimitFromSessionKey, limitHistoryTurns } from "../history.js";
 import { log } from "../logger.js";
 import { buildModelAliasLines } from "../model.js";
@@ -645,9 +646,11 @@ export async function runEmbeddedAttempt(
           policy: transcriptPolicy,
         });
         cacheTrace?.recordStage("session:sanitized", { messages: prior });
+        // Strip heartbeat poll/ack pairs to save context tokens.
+        const pruned = pruneHeartbeatTurns(prior);
         const validatedGemini = transcriptPolicy.validateGeminiTurns
-          ? validateGeminiTurns(prior)
-          : prior;
+          ? validateGeminiTurns(pruned)
+          : pruned;
         const validated = transcriptPolicy.validateAnthropicTurns
           ? validateAnthropicTurns(validatedGemini)
           : validatedGemini;

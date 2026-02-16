@@ -18,6 +18,7 @@ import {
   sanitizeUserFacingText,
 } from "../../agents/pi-embedded-helpers.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { resolveSmartRouting } from "../../agents/smart-routing.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveGroupSessionKey,
@@ -151,11 +152,17 @@ export async function runAgentTurnWithFallback(params: {
       };
       const blockReplyPipeline = params.blockReplyPipeline;
       const onToolResult = params.opts?.onToolResult;
+      const routingPrefer = resolveSmartRouting({
+        message: params.commandBody,
+        isHeartbeat: params.isHeartbeat,
+        config: params.followupRun.run.config,
+      });
       const fallbackResult = await runWithModelFallback({
         cfg: params.followupRun.run.config,
         provider: params.followupRun.run.provider,
         model: params.followupRun.run.model,
         agentDir: params.followupRun.run.agentDir,
+        routingPrefer: routingPrefer ?? undefined,
         fallbacksOverride: resolveAgentModelFallbacksOverride(
           params.followupRun.run.config,
           resolveAgentIdFromSessionKey(params.followupRun.run.sessionKey),

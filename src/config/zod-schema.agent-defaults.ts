@@ -18,6 +18,25 @@ export const AgentDefaultsSchema = z
       .object({
         primary: z.string().optional(),
         fallbacks: z.array(z.string()).optional(),
+        routing: z
+          .object({
+            enabled: z.boolean().optional(),
+            rules: z
+              .array(
+                z.object({
+                  when: z.union([
+                    z.literal("simple"),
+                    z.literal("tool_heavy"),
+                    z.literal("reasoning"),
+                    z.literal("code"),
+                  ]),
+                  prefer: z.string(),
+                }),
+              )
+              .optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -84,6 +103,23 @@ export const AgentDefaultsSchema = z
             placeholder: z.string().optional(),
           })
           .strict()
+          .optional(),
+        toolOverrides: z
+          .record(
+            z.string(),
+            z
+              .object({
+                softTrim: z
+                  .object({
+                    maxChars: z.number().int().nonnegative().optional(),
+                    headChars: z.number().int().nonnegative().optional(),
+                    tailChars: z.number().int().nonnegative().optional(),
+                  })
+                  .strict()
+                  .optional(),
+              })
+              .strict(),
+          )
           .optional(),
       })
       .strict()

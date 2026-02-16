@@ -153,11 +153,25 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
           }
           logError(`[tools] ${normalizedName} failed: ${described.message}`);
 
-          const errorResult = jsonResult({
+          // Instructor pattern: enrich error with schema hints and retry guidance
+          const errorPayload: Record<string, unknown> = {
             status: "error",
             tool: normalizedName,
             error: described.message,
-          });
+          };
+          // Add parameter schema hints if available (helps model self-correct)
+          if (tool.parameters?.properties) {
+            const required = (tool.parameters as { required?: string[] }).required ?? [];
+            const propNames = Object.keys(tool.parameters.properties as Record<string, unknown>);
+            errorPayload.expected_params = propNames;
+            if (required.length > 0) {
+              errorPayload.required_params = required;
+            }
+            errorPayload.retry_hint =
+              "Check that all required parameters are provided with correct types. " +
+              "Re-read the tool description and try again with corrected arguments.";
+          }
+          const errorResult = jsonResult(errorPayload);
 
           // Call after_tool_call hook for errors too
           const hookRunner = getGlobalHookRunner();

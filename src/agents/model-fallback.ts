@@ -159,6 +159,8 @@ function resolveFallbackCandidates(params: {
   model: string;
   /** Optional explicit fallbacks list; when provided (even empty), replaces agents.defaults.model.fallbacks. */
   fallbacksOverride?: string[];
+  /** Optional smart-routing preferred model (prepended before primary). */
+  routingPrefer?: string;
 }): ModelCandidate[] {
   const primary = params.cfg
     ? resolveConfiguredModelRef({
@@ -181,6 +183,18 @@ function resolveFallbackCandidates(params: {
     defaultProvider,
   });
   const { candidates, addCandidate } = createModelCandidateCollector(allowlist);
+
+  // Smart routing: if a preferred model was resolved, try it first
+  if (params.routingPrefer?.trim()) {
+    const resolved = resolveModelRefFromString({
+      raw: params.routingPrefer,
+      defaultProvider,
+      aliasIndex,
+    });
+    if (resolved) {
+      addCandidate(resolved.ref, false);
+    }
+  }
 
   addCandidate(normalizedPrimary, false);
 
@@ -224,6 +238,8 @@ export async function runWithModelFallback<T>(params: {
   agentDir?: string;
   /** Optional explicit fallbacks list; when provided (even empty), replaces agents.defaults.model.fallbacks. */
   fallbacksOverride?: string[];
+  /** Optional smart-routing preferred model (prepended to candidates). */
+  routingPrefer?: string;
   run: (provider: string, model: string) => Promise<T>;
   onError?: ModelFallbackErrorHandler;
 }): Promise<ModelFallbackRunResult<T>> {
@@ -232,6 +248,7 @@ export async function runWithModelFallback<T>(params: {
     provider: params.provider,
     model: params.model,
     fallbacksOverride: params.fallbacksOverride,
+    routingPrefer: params.routingPrefer,
   });
   const authStore = params.cfg
     ? ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false })

@@ -2,6 +2,7 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent, ToolResultMessage } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { EffectiveContextPruningSettings } from "./settings.js";
+import { getToolSoftTrim } from "./settings.js";
 import { makeToolPrunablePredicate } from "./tools.js";
 
 const CHARS_PER_TOKEN_ESTIMATE = 4;
@@ -190,6 +191,7 @@ function findFirstUserIndex(messages: AgentMessage[]): number | null {
 function softTrimToolResultMessage(params: {
   msg: ToolResultMessage;
   settings: EffectiveContextPruningSettings;
+  toolName?: string;
 }): ToolResultMessage | null {
   const { msg, settings } = params;
   // Ignore image tool results for now: these are often directly relevant and hard to partially prune safely.
@@ -197,14 +199,17 @@ function softTrimToolResultMessage(params: {
     return null;
   }
 
+  // Use per-tool softTrim settings if configured, otherwise global defaults
+  const toolSoftTrim = getToolSoftTrim(settings, params.toolName);
+
   const parts = collectTextSegments(msg.content);
   const rawLen = estimateJoinedTextLength(parts);
-  if (rawLen <= settings.softTrim.maxChars) {
+  if (rawLen <= toolSoftTrim.maxChars) {
     return null;
   }
 
-  const headChars = Math.max(0, settings.softTrim.headChars);
-  const tailChars = Math.max(0, settings.softTrim.tailChars);
+  const headChars = Math.max(0, toolSoftTrim.headChars);
+  const tailChars = Math.max(0, toolSoftTrim.tailChars);
   if (headChars + tailChars >= rawLen) {
     return null;
   }
@@ -284,6 +289,7 @@ export function pruneContextMessages(params: {
     const updated = softTrimToolResultMessage({
       msg: msg as unknown as ToolResultMessage,
       settings,
+      toolName: msg.toolName,
     });
     if (!updated) {
       continue;

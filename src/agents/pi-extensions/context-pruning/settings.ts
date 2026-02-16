@@ -6,6 +6,12 @@ export type ContextPruningToolMatch = {
 };
 export type ContextPruningMode = "off" | "cache-ttl";
 
+export type ContextPruningSoftTrimConfig = {
+  maxChars?: number;
+  headChars?: number;
+  tailChars?: number;
+};
+
 export type ContextPruningConfig = {
   mode?: ContextPruningMode;
   /** TTL to consider cache expired (duration string, default unit: minutes). */
@@ -15,15 +21,19 @@ export type ContextPruningConfig = {
   hardClearRatio?: number;
   minPrunableToolChars?: number;
   tools?: ContextPruningToolMatch;
-  softTrim?: {
-    maxChars?: number;
-    headChars?: number;
-    tailChars?: number;
-  };
+  softTrim?: ContextPruningSoftTrimConfig;
   hardClear?: {
     enabled?: boolean;
     placeholder?: string;
   };
+  /** Per-tool softTrim overrides. Key is tool name (e.g., "exec", "web_fetch"). */
+  toolOverrides?: Record<string, { softTrim?: ContextPruningSoftTrimConfig }>;
+};
+
+export type EffectiveSoftTrim = {
+  maxChars: number;
+  headChars: number;
+  tailChars: number;
 };
 
 export type EffectiveContextPruningSettings = {
@@ -34,16 +44,25 @@ export type EffectiveContextPruningSettings = {
   hardClearRatio: number;
   minPrunableToolChars: number;
   tools: ContextPruningToolMatch;
-  softTrim: {
-    maxChars: number;
-    headChars: number;
-    tailChars: number;
-  };
+  softTrim: EffectiveSoftTrim;
   hardClear: {
     enabled: boolean;
     placeholder: string;
   };
+  /** Per-tool softTrim overrides (resolved from config). */
+  toolOverrides?: Map<string, EffectiveSoftTrim>;
 };
+
+/** Get softTrim settings for a specific tool, falling back to global defaults. */
+export function getToolSoftTrim(
+  settings: EffectiveContextPruningSettings,
+  toolName: string | undefined,
+): EffectiveSoftTrim {
+  if (toolName && settings.toolOverrides?.has(toolName)) {
+    return settings.toolOverrides.get(toolName)!;
+  }
+  return settings.softTrim;
+}
 
 export const DEFAULT_CONTEXT_PRUNING_SETTINGS: EffectiveContextPruningSettings = {
   mode: "cache-ttl",
@@ -116,6 +135,34 @@ export function computeEffectiveSettings(raw: unknown): EffectiveContextPruningS
     }
     if (typeof cfg.hardClear.placeholder === "string" && cfg.hardClear.placeholder.trim()) {
       s.hardClear.placeholder = cfg.hardClear.placeholder.trim();
+    }
+  }
+
+  // Parse per-tool softTrim overrides
+  if (cfg.toolOverrides && typeof cfg.toolOverrides === "object") {
+    const overrides = new Map<string, EffectiveSoftTrim>();
+    for (const [toolName, override] of Object.entries(cfg.toolOverrides)) {
+      if (!override?.softTrim) {
+        continue;
+      }
+      const st = override.softTrim;
+      overrides.set(toolName, {
+        maxChars:
+          typeof st.maxChars === "number" && Number.isFinite(st.maxChars)
+            ? Math.max(0, Math.floor(st.maxChars))
+            : s.softTrim.maxChars,
+        headChars:
+          typeof st.headChars === "number" && Number.isFinite(st.headChars)
+            ? Math.max(0, Math.floor(st.headChars))
+            : s.softTrim.headChars,
+        tailChars:
+          typeof st.tailChars === "number" && Number.isFinite(st.tailChars)
+            ? Math.max(0, Math.floor(st.tailChars))
+            : s.softTrim.tailChars,
+      });
+    }
+    if (overrides.size > 0) {
+      s.toolOverrides = overrides;
     }
   }
 
