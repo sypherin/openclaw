@@ -9,6 +9,30 @@ export function isAssistantMessage(msg: AgentMessage | undefined): msg is Assist
 }
 
 /**
+ * Strip malformed GLM/Qwen-style <tool_call> XML that leaks into text content.
+ * Some models (GLM5, Qwen) emit tool invocations as XML-like tags in plain text
+ * instead of using proper OpenAI function calling format. This removes:
+ * - <tool_call>...</tool_call> blocks (well-formed)
+ * - <tool_call>...  with unclosed tags (malformed, up to end-of-text or </think>)
+ */
+export function stripGlmToolCallXml(text: string): string {
+  if (!text) {
+    return text;
+  }
+  if (!/<tool_call>/i.test(text)) {
+    return text;
+  }
+
+  // Remove well-formed <tool_call>...</tool_call> blocks.
+  let cleaned = text.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "");
+
+  // Remove malformed <tool_call> without matching close tag (rest of text).
+  cleaned = cleaned.replace(/<tool_call>[\s\S]*/gi, "");
+
+  return cleaned.trim();
+}
+
+/**
  * Strip malformed Minimax tool invocations that leak into text content.
  * Minimax sometimes embeds tool calls as XML in text blocks instead of
  * proper structured tool calls. This removes:
@@ -220,7 +244,7 @@ export function extractAssistantText(msg: AssistantMessage): string {
         .filter(isTextBlock)
         .map((c) =>
           stripThinkingTagsFromText(
-            stripDowngradedToolCallText(stripMinimaxToolCallXml(c.text)),
+            stripDowngradedToolCallText(stripGlmToolCallXml(stripMinimaxToolCallXml(c.text))),
           ).trim(),
         )
         .filter(Boolean)

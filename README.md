@@ -43,6 +43,7 @@ Added compatibility for NVIDIA NIM models that upstream doesn't natively support
 Key changes:
 
 - `feat: add pi-ai post-install patch script for NVIDIA model compat` — patches `@mariozechner/pi-ai` openai-completions.js across all installed versions with 7 fixes (plain string content, empty tool call filter, reasoning fallback, 120s per-request timeout, Kimi K2.5 tool call ID normalization, text-to-tool-call fallback parser, strip `reasoning_content` from history). Run `scripts/apply-pi-ai-patches.sh` after `pnpm install`.
+- **GLM5 `<tool_call>` XML strip** — GLM5 sometimes emits tool invocations as `<tool_call>` XML tags in text instead of using proper function calling. Added `stripGlmToolCallXml()` to the response processing chain (both batch and streaming paths) alongside existing Minimax strip.
 - `fix: hook loading + remove custom NVIDIA stream routing` — removed custom `nvidia-reasoning-stream` StreamFn routing so all non-Ollama models use standard `streamSimple`, which properly forwards `tools`/`tool_choice` params to the API.
 - **Qwen3 `/no_think` directive** — auto-injects `/no_think` into system prompt when model name contains "qwen", reducing false safety refusals and improving tool call reliability.
 
