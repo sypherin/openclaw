@@ -97,4 +97,34 @@ describe("buildInboundUserContextPrefix", () => {
     expect(text).toContain("Conversation info (untrusted metadata):");
     expect(text).toContain('"conversation_label": "ops-room"');
   });
+
+  it("includes sender identifier in conversation info", () => {
+    const text = buildInboundUserContextPrefix({
+      ChatType: "direct",
+      SenderE164: " +15551234567 ",
+    } as TemplateContext);
+
+    const conversationInfo = parseConversationInfoPayload(text);
+    expect(conversationInfo["sender"]).toBe("+15551234567");
+  });
+
+  it("includes message_id in conversation info", () => {
+    const text = buildInboundUserContextPrefix({
+      ChatType: "direct",
+      MessageSid: "  msg-123  ",
+    } as TemplateContext);
+
+    const conversationInfo = parseConversationInfoPayload(text);
+    expect(conversationInfo["message_id"]).toBe("msg-123");
+  });
+
+  it("falls back to SenderId when sender phone is missing", () => {
+    const text = buildInboundUserContextPrefix({
+      ChatType: "direct",
+      SenderId: " user@example.com ",
+    } as TemplateContext);
+
+    const conversationInfo = parseConversationInfoPayload(text);
+    expect(conversationInfo["sender"]).toBe("user@example.com");
+  });
 });
