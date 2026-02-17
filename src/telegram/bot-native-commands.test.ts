@@ -1,9 +1,9 @@
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
+import { STATE_DIR } from "../config/paths.js";
 import type { TelegramAccountConfig } from "../config/types.js";
 import type { RuntimeEnv } from "../runtime.js";
-import { STATE_DIR } from "../config/paths.js";
 import { registerTelegramNativeCommands } from "./bot-native-commands.js";
 
 const { listSkillCommandsForAgents } = vi.hoisted(() => ({
@@ -147,6 +147,37 @@ describe("registerTelegramNativeCommands", () => {
     expect(runtimeLog).toHaveBeenCalledWith(
       "Telegram limits bots to 100 commands. 120 configured; registering first 100. Use channels.telegram.commands.native: false to disable, or reduce plugin/skill/custom commands.",
     );
+  });
+
+  it("normalizes hyphenated native command names for Telegram registration", async () => {
+    const setMyCommands = vi.fn().mockResolvedValue(undefined);
+    const command = vi.fn();
+
+    registerTelegramNativeCommands({
+      ...buildParams({}),
+      bot: {
+        api: {
+          setMyCommands,
+          sendMessage: vi.fn().mockResolvedValue(undefined),
+        },
+        command,
+      } as unknown as Parameters<typeof registerTelegramNativeCommands>[0]["bot"],
+    });
+
+    await vi.waitFor(() => {
+      expect(setMyCommands).toHaveBeenCalled();
+    });
+
+    const registeredCommands = setMyCommands.mock.calls[0]?.[0] as Array<{
+      command: string;
+      description: string;
+    }>;
+    expect(registeredCommands.some((entry) => entry.command === "export_session")).toBe(true);
+    expect(registeredCommands.some((entry) => entry.command === "export-session")).toBe(false);
+
+    const registeredHandlers = command.mock.calls.map(([name]) => name);
+    expect(registeredHandlers).toContain("export_session");
+    expect(registeredHandlers).not.toContain("export-session");
   });
 
   it("passes agent-scoped media roots for plugin command replies with media", async () => {
