@@ -50,7 +50,7 @@ const resolvePluginSdkAliasFile = (params: {
   try {
     const modulePath = fileURLToPath(import.meta.url);
     const isProduction = process.env.NODE_ENV === "production";
-    const isTest = process.env.VITEST || process.env.NODE_ENV === "test";
+    const _isTest = process.env.VITEST || process.env.NODE_ENV === "test";
     let cursor = path.dirname(modulePath);
     for (let i = 0; i < 6; i += 1) {
       const srcCandidate = path.join(cursor, "src", "plugin-sdk", params.srcFile);
