@@ -19,6 +19,7 @@ import {
   ProviderCommandsSchema,
   ReplyToModeSchema,
   RetryConfigSchema,
+  TtsConfigSchema,
   requireOpenAllowFrom,
 } from "./zod-schema.core.js";
 import { sensitive } from "./zod-schema.sensitive.js";
@@ -279,6 +280,7 @@ const DiscordVoiceSchema = z
   .object({
     enabled: z.boolean().optional(),
     autoJoin: z.array(DiscordVoiceAutoJoinSchema).optional(),
+    tts: TtsConfigSchema,
   })
   .strict()
   .optional();

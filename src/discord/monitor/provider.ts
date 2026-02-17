@@ -564,7 +564,6 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
     });
     voiceManagerRef.current = voiceManager;
     registerDiscordListener(client.listeners, new DiscordVoiceReadyListener(voiceManager));
-    void voiceManager.autoJoin();
   }
 
   const messageHandler = createDiscordMessageHandler({

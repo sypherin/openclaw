@@ -18,7 +18,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { MsgContext } from "../../auto-reply/templating.js";
 import type { OpenClawConfig } from "../../config/config.js";
-import type { DiscordAccountConfig } from "../../config/types.js";
+import type { DiscordAccountConfig, TtsConfig } from "../../config/types.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { resolveAgentDir } from "../../agents/agent-scope.js";
 import { agentCommand } from "../../commands/agent.js";
@@ -33,7 +33,7 @@ import {
 } from "../../media-understanding/runner.js";
 import { resolveAgentRoute } from "../../routing/resolve-route.js";
 import { parseTtsDirectives } from "../../tts/tts-core.js";
-import { textToSpeech, resolveTtsConfig } from "../../tts/tts.js";
+import { resolveTtsConfig, textToSpeech, type ResolvedTtsConfig } from "../../tts/tts.js";
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -63,6 +63,56 @@ type VoiceSessionEntry = {
   activeSpeakers: Set<string>;
   stop: () => void;
 };
+
+function mergeTtsConfig(base: TtsConfig, override?: TtsConfig): TtsConfig {
+  if (!override) {
+    return base;
+  }
+  return {
+    ...base,
+    ...override,
+    modelOverrides: {
+      ...base.modelOverrides,
+      ...override.modelOverrides,
+    },
+    elevenlabs: {
+      ...base.elevenlabs,
+      ...override.elevenlabs,
+      voiceSettings: {
+        ...base.elevenlabs?.voiceSettings,
+        ...override.elevenlabs?.voiceSettings,
+      },
+    },
+    openai: {
+      ...base.openai,
+      ...override.openai,
+    },
+    edge: {
+      ...base.edge,
+      ...override.edge,
+    },
+  };
+}
+
+function resolveVoiceTtsConfig(params: { cfg: OpenClawConfig; override?: TtsConfig }): {
+  cfg: OpenClawConfig;
+  resolved: ResolvedTtsConfig;
+} {
+  if (!params.override) {
+    return { cfg: params.cfg, resolved: resolveTtsConfig(params.cfg) };
+  }
+  const base = params.cfg.messages?.tts ?? {};
+  const merged = mergeTtsConfig(base, params.override);
+  const messages = params.cfg.messages ?? {};
+  const cfg = {
+    ...params.cfg,
+    messages: {
+      ...messages,
+      tts: merged,
+    },
+  };
+  return { cfg, resolved: resolveTtsConfig(cfg) };
+}
 
 function buildWavBuffer(pcm: Buffer): Buffer {
   const blockAlign = (CHANNELS * BIT_DEPTH) / 8;
@@ -461,7 +511,10 @@ export class DiscordVoiceManager {
       return;
     }
 
-    const ttsConfig = resolveTtsConfig(this.params.cfg);
+    const { cfg: ttsCfg, resolved: ttsConfig } = resolveVoiceTtsConfig({
+      cfg: this.params.cfg,
+      override: this.params.discordConfig.voice?.tts,
+    });
     const directive = parseTtsDirectives(replyText, ttsConfig.modelOverrides);
     const speakText = directive.overrides.ttsText ?? directive.cleanedText.trim();
     if (!speakText) {
@@ -470,7 +523,7 @@ export class DiscordVoiceManager {
 
     const ttsResult = await textToSpeech({
       text: speakText,
-      cfg: this.params.cfg,
+      cfg: ttsCfg,
       channel: "discord",
       overrides: directive.overrides,
     });

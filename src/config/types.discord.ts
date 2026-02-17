@@ -10,6 +10,7 @@ import type {
 import type { ChannelHeartbeatVisibilityConfig } from "./types.channels.js";
 import type { DmConfig, ProviderCommandsConfig } from "./types.messages.js";
 import type { GroupToolPolicyBySenderConfig, GroupToolPolicyConfig } from "./types.tools.js";
+import type { TtsConfig } from "./types.tts.js";
 
 export type DiscordDmConfig = {
   /** If false, ignore all incoming Discord DMs. Default: true. */
@@ -103,6 +104,8 @@ export type DiscordVoiceConfig = {
   enabled?: boolean;
   /** Voice channels to auto-join on startup. */
   autoJoin?: DiscordVoiceAutoJoinConfig[];
+  /** Optional TTS overrides for Discord voice output. */
+  tts?: TtsConfig;
 };
 
 export type DiscordExecApprovalConfig = {
