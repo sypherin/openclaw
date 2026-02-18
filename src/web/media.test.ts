@@ -9,6 +9,28 @@ import { optimizeImageToPng } from "../media/image-ops.js";
 import { captureEnv } from "../test-utils/env.js";
 import { loadWebMedia, loadWebMediaRaw, optimizeImageToJpeg } from "./media.js";
 
+vi.mock("../infra/net/connection-allowlist.js", () => ({
+  checkConnection: (_url: string, _source?: string) => {
+    let domain = "unknown";
+    try {
+      domain = new URL(_url).hostname;
+    } catch {}
+    return {
+      id: "test",
+      url: _url,
+      domain,
+      port: 443,
+      protocol: "https:",
+      allowed: true,
+      reason: "test_bypass",
+      timestamp: Date.now(),
+    };
+  },
+  getConnectionAllowlist: () => ({
+    check: (_url: string) => ({ allowed: true, reason: "test_bypass" }),
+  }),
+}));
+
 let fixtureRoot = "";
 let fixtureFileCount = 0;
 let largeJpegBuffer: Buffer;

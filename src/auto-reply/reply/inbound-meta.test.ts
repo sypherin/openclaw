@@ -10,6 +10,14 @@ function parseInboundMetaPayload(text: string): Record<string, unknown> {
   return JSON.parse(match[1]) as Record<string, unknown>;
 }
 
+function parseConversationInfoPayload(text: string): Record<string, unknown> {
+  const match = text.match(/Conversation info[^]*?```json\n([\s\S]*?)\n```/);
+  if (!match?.[1]) {
+    throw new Error("missing conversation info json block");
+  }
+  return JSON.parse(match[1]) as Record<string, unknown>;
+}
+
 describe("buildInboundMetaSystemPrompt", () => {
   it("includes trusted message and routing ids for tool actions", () => {
     const prompt = buildInboundMetaSystemPrompt({
