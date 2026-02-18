@@ -42,15 +42,20 @@ export type EnvSanitizationOptions = {
   customAllowedPatterns?: ReadonlyArray<RegExp>;
 };
 
-function validateEnvVarValue(value: string): string | undefined {
+type ValidationResult = {
+  severity: "block" | "warn";
+  message: string;
+};
+
+function validateEnvVarValue(value: string): ValidationResult | undefined {
   if (value.includes("\0")) {
-    return "Contains null bytes";
+    return { severity: "block", message: "Contains null bytes" };
   }
   if (value.length > 32768) {
-    return "Value exceeds maximum length";
+    return { severity: "block", message: "Value exceeds maximum length" };
   }
   if (/^[A-Za-z0-9+/=]{100,}$/.test(value)) {
-    return "Value looks like base64-encoded credential data";
+    return { severity: "warn", message: "Value looks like base64-encoded credential data" };
   }
   return undefined;
 }
@@ -86,9 +91,14 @@ export function sanitizeEnvVars(
       continue;
     }
 
-    const warning = validateEnvVarValue(value);
-    if (warning) {
-      warnings.push(`${key}: ${warning}`);
+    const validation = validateEnvVarValue(value);
+    if (validation) {
+      if (validation.severity === "block") {
+        blocked.push(key);
+        warnings.push(`${key}: ${validation.message}`);
+        continue;
+      }
+      warnings.push(`${key}: ${validation.message}`);
     }
 
     allowed[key] = value;

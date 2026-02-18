@@ -1,4 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../infra/net/connection-allowlist.js", () => ({
+  checkConnection: (_url: string, _source?: string) => ({
+    id: "test",
+    url: _url,
+    domain: new URL(_url).hostname,
+    port: 443,
+    protocol: "https:",
+    allowed: true,
+    reason: "test_bypass",
+    timestamp: Date.now(),
+  }),
+  getConnectionAllowlist: () => ({
+    check: (_url: string) => ({ allowed: true, reason: "test_bypass" }),
+  }),
+}));
+
 import { fetchRemoteMedia } from "./fetch.js";
 
 function makeStream(chunks: Uint8Array[]) {

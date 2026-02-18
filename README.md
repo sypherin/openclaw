@@ -54,6 +54,12 @@ Key changes:
 - **Security tests** — added test coverage for security-critical paths
 - **Malicious hook removal** — removed `soul-evil` hook and blocked it from the fork
 - **Non-admin status redaction** — sensitive status details are now redacted for non-admin scopes
+- **SSRF IPv6 transition bypass block** — prevents SSRF via IPv6 transition address bypasses (upstream)
+- **Path traversal prevention (OC-06)** — confines config `$include` resolution to top-level config directory (upstream)
+- **Sandbox env sanitization** — sanitizes environment variables before Docker launch (upstream)
+- **SafeBins path trust hardening** — extracted trust resolver with stricter path validation (upstream)
+- **Cron webhook SSRF guard** — guards cron webhook delivery against SSRF (upstream)
+- **Telegram command sanitization** — sanitizes native command names for Telegram API (upstream)
 
 ### Hook System Fixes
 
@@ -74,6 +80,21 @@ Key changes:
 - **Per-tool softTrim context pruning** — tool-specific `maxChars`/`headChars`/`tailChars` overrides in `agents.defaults.contextPruning.toolOverrides` (e.g., tighter limits for `exec` and `web_fetch`, more generous for `read`).
 - **Instructor pattern for tool errors** — enriches tool call error results with `expected_params`, `required_params`, and `retry_hint` to help models self-correct on retry.
 
+### Anthropic Model Support (upstream cherry-picks)
+
+- **Sonnet 4.6 support** — `anthropic/claude-sonnet-4-6` with forward-compat fallback
+- **1M context beta header** — opt-in via model `params.context1m: true` (maps to `anthropic-beta: context-1m-2025-08-07`)
+
+### Subagent Fixes (upstream cherry-picks)
+
+- **24 subagent reliability fixes** — completion delivery, sticky reply threading, read-tool overflow guards, retry backoff, OriginatingTo fallback routing, deterministic announce, correct model display in sessions list
+
+### Skills Routing (upstream cherry-picks)
+
+- **"Use when / Don't use when" routing blocks** — conditional skill activation boundaries
+- **Improved skill descriptions** — routing logic integrated into descriptions
+- **Compact skill paths** — `~`-prefixed paths to reduce prompt tokens
+
 ### Additional Features
 
 - **Himalaya email skill** — OAuth2 email integration via [himalaya](https://github.com/pimalaya/himalaya) with draft save support
@@ -84,7 +105,7 @@ Key changes:
 
 ### Upstream Sync
 
-This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-15**.
+This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-18** (cherry-picked 43 commits: security, Sonnet 4.6, subagent fixes, skills routing).
 
 ```bash
 # To sync with upstream

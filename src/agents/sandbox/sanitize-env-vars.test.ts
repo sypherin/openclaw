@@ -28,9 +28,9 @@ describe("sanitizeEnvVars", () => {
     expect(result.blocked).toEqual(expect.arrayContaining(["MY_TOKEN", "MY_SECRET"]));
   });
 
-  it("adds warnings for suspicious values", () => {
+  it("adds warnings for suspicious values and blocks null bytes", () => {
     const base64Like =
-      "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ==";
+      "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=";
     const result = sanitizeEnvVars({
       USER: "alice",
       SAFE_TEXT: base64Like,
