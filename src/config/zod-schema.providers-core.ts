@@ -280,7 +280,7 @@ const DiscordVoiceSchema = z
   .object({
     enabled: z.boolean().optional(),
     autoJoin: z.array(DiscordVoiceAutoJoinSchema).optional(),
-    tts: TtsConfigSchema,
+    tts: TtsConfigSchema.optional(),
   })
   .strict()
   .optional();
