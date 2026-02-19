@@ -48,35 +48,20 @@ changed = False
 # We make ALL providers use .join("") because array format causes
 # models like DeepSeek to mimic the JSON structure in responses.
 
-old_assistant = '''if (model.provider === "github-copilot") {
-                assistantMsg.content = nonEmptyTextBlocks.map((b) => sanitizeSurrogates(b.text)).join("");
-            }
-            else {
-                assistantMsg.content = nonEmptyTextBlocks.map((b) => {
-                    return { type: "text", text: sanitizeSurrogates(b.text) };
-                });
-            }'''
-
-new_assistant = '''// Send assistant content as a plain string for all providers.
-                // Array format [{"type":"text","text":"..."}] causes some models
-                // (DeepSeek, etc.) to mimic the JSON structure in their responses.
-                // String content is always valid for text-only messages in the OpenAI API.
-                assistantMsg.content = nonEmptyTextBlocks.map((b) => sanitizeSurrogates(b.text)).join("");'''
-
-if old_assistant in code:
-    code = code.replace(old_assistant, new_assistant)
-    changed = True
-    print("  [1/4] Applied: assistant content as string")
-elif 'Send assistant content as a plain string for all providers' in code:
+if 'Send assistant content as a plain string for all providers' in code:
     print("  [1/4] Already applied: assistant content as string")
 elif 'return { type: "text", text: sanitizeSurrogates(b.text) }' in code:
-    # Whitespace mismatch — try regex replacement
+    # Find the exact if/else block and replace regardless of indentation
     pattern = re.compile(
-        r'([ \t]*)(?://.*?\n\s*)?if \(model\.provider === "github-copilot"\) \{\s*'
-        r'assistantMsg\.content = nonEmptyTextBlocks\.map\(\(b\) => sanitizeSurrogates\(b\.text\)\)\.join\(""\);\s*\}'
-        r'\s*else \{\s*assistantMsg\.content = nonEmptyTextBlocks\.map\(\(b\) => \{'
-        r'\s*return \{ type: "text", text: sanitizeSurrogates\(b\.text\) \};\s*\}\);\s*\}',
-        re.DOTALL
+        r'([ \t]*)(// GitHub Copilot requires.*?\n\s*// Sending as array.*?\n\s*)?'
+        r'if \(model\.provider === "github-copilot"\) \{\n'
+        r'\s*assistantMsg\.content = nonEmptyTextBlocks\.map\(\(b\) => sanitizeSurrogates\(b\.text\)\)\.join\(""\);\n'
+        r'\s*\}\n'
+        r'\s*else \{\n'
+        r'\s*assistantMsg\.content = nonEmptyTextBlocks\.map\(\(b\) => \{\n'
+        r'\s*return \{ type: "text", text: sanitizeSurrogates\(b\.text\) \};\n'
+        r'\s*\}\);\n'
+        r'\s*\}'
     )
     match = pattern.search(code)
     if match:
@@ -90,7 +75,7 @@ elif 'return { type: "text", text: sanitizeSurrogates(b.text) }' in code:
         )
         code = code[:match.start()] + replacement + code[match.end():]
         changed = True
-        print("  [1/4] Applied (regex): assistant content as string")
+        print("  [1/4] Applied: assistant content as string")
     else:
         print("  [1/4] WARNING: Found array format but regex didn't match — patch manually")
 else:
@@ -129,7 +114,8 @@ if FILTER_MARKER in code:
 else:
     # Find the last finishCurrentBlock that's followed by signal/aborted check
     # This is the one at the end of the main streaming loop
-    pattern = r'(            finishCurrentBlock\(currentBlock\);\n)(            if \(options\?\.signal\?\.aborted\))'
+    # Match any indentation level (12 or 16 spaces) for cross-version compat
+    pattern = r'([ \t]+finishCurrentBlock\(currentBlock\);\n)([ \t]+if \(options\?\.signal\?\.aborted\))'
     match = re.search(pattern, code)
     if match:
         insertion_point = match.start() + len(match.group(1))
@@ -151,19 +137,28 @@ TIMEOUT_MARKER = 'timeout: 120000'
 if TIMEOUT_MARKER in code:
     print("  [4/4] Already applied: 120s timeout")
 else:
-    old_client = '''dangerouslyAllowBrowser: true,
+    # Try both old and new OpenAI constructor formats
+    old_client_v1 = '''dangerouslyAllowBrowser: true,
         defaultHeaders: headers,
     });'''
-    new_client = '''dangerouslyAllowBrowser: true,
+    new_client_v1 = '''dangerouslyAllowBrowser: true,
         defaultHeaders: headers,
         timeout: 120000,
     });'''
-    if old_client in code:
-        code = code.replace(old_client, new_client)
+    if old_client_v1 in code:
+        code = code.replace(old_client_v1, new_client_v1)
         changed = True
         print("  [4/4] Applied: 120s timeout")
     else:
-        print("  [4/4] WARNING: Could not find OpenAI client constructor to patch")
+        # 0.53.0+: constructor may use different formatting
+        timeout_pattern = re.compile(r'(new OpenAI\(\{[^}]*?)(defaultHeaders:\s*headers,\s*\n\s*\}\))')
+        tmatch = timeout_pattern.search(code)
+        if tmatch:
+            code = code[:tmatch.start(2)] + 'defaultHeaders: headers,\n        timeout: 120000,\n    })' + code[tmatch.end(2):]
+            changed = True
+            print("  [4/4] Applied: 120s timeout (v2 format)")
+        else:
+            print("  [4/4] WARNING: Could not find OpenAI client constructor to patch")
 
 # ============================================================
 # PATCH 5: Kimi K2.5 tool call ID normalization
@@ -305,13 +300,17 @@ else:
             }
         }'''
 
-    # Insert right before `return params;` in convertMessages()
-    # Use unique anchor that only matches convertMessages(), not buildParams()
-    insert_target = '        lastRole = msg.role;\n    }\n    return params;\n}'
-    if insert_target in code:
-        code = code.replace(insert_target, '        lastRole = msg.role;\n    }\n' + strip_patch + '\n    return params;\n}', 1)
-        changed = True
-        print("  [7/7] Applied: strip reasoning_content from history")
+    # Insert right before the last `return params;` before convertTools/export
+    # Try literal anchors that preserve surrounding declarations
+    target_a = '    return params;\n}\nfunction convertTools'
+    target_b = '    return params;\n}\nexport {'
+    for target in [target_a, target_b]:
+        if target in code:
+            suffix = target[len('    return params;\n}\n'):]
+            code = code.replace(target, strip_patch + '\n    return params;\n}\n' + suffix, 1)
+            changed = True
+            print("  [7/7] Applied: strip reasoning_content from history")
+            break
     else:
         print("  [7/7] WARNING: Could not find insertion point for reasoning strip")
 
