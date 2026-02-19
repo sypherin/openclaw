@@ -54,7 +54,7 @@ function validateEnvVarValue(value: string): ValidationResult | undefined {
   if (value.length > 32768) {
     return { severity: "block", message: "Value exceeds maximum length" };
   }
-  if (/^[A-Za-z0-9+/=]{100,}$/.test(value)) {
+  if (/^[A-Za-z0-9+/=]{80,}$/.test(value)) {
     return { severity: "warn", message: "Value looks like base64-encoded credential data" };
   }
   return undefined;
