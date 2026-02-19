@@ -30,7 +30,7 @@ describe("sanitizeEnvVars", () => {
 
   it("adds warnings for suspicious values and blocks null bytes", () => {
     const base64Like =
-      "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=";
+      "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ==";
     const result = sanitizeEnvVars({
       USER: "alice",
       SAFE_TEXT: base64Like,

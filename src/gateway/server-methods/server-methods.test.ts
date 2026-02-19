@@ -20,10 +20,6 @@ vi.mock("../../commands/status.js", () => ({
   getStatusSummary: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
-type HealthStatusHandlerParams = Parameters<
-  (typeof import("./health.js"))["healthHandlers"]["status"]
->[0];
-
 describe("waitForAgentJob", () => {
   const AGENT_RUN_ERROR_RETRY_GRACE_MS = 15_000;
 
@@ -335,8 +331,6 @@ describe("exec approval handlers", () => {
   type ExecApprovalHandlers = ReturnType<typeof createExecApprovalHandlers>;
   type ExecApprovalRequestArgs = Parameters<ExecApprovalHandlers["exec.approval.request"]>[0];
   type ExecApprovalResolveArgs = Parameters<ExecApprovalHandlers["exec.approval.resolve"]>[0];
-  type ExecApprovalRequestRespond = ExecApprovalRequestArgs["respond"];
-  type ExecApprovalResolveRespond = ExecApprovalResolveArgs["respond"];
 
   const defaultExecApprovalRequestParams = {
     command: "echo ok",
@@ -359,7 +353,7 @@ describe("exec approval handlers", () => {
 
   async function requestExecApproval(params: {
     handlers: ExecApprovalHandlers;
-    respond: ExecApprovalRequestRespond;
+    respond: ReturnType<typeof vi.fn>;
     context: { broadcast: (event: string, payload: unknown) => void };
     params?: Record<string, unknown>;
   }) {
@@ -369,7 +363,7 @@ describe("exec approval handlers", () => {
     } as unknown as ExecApprovalRequestArgs["params"];
     return params.handlers["exec.approval.request"]({
       params: requestParams,
-      respond: params.respond,
+      respond: params.respond as unknown as ExecApprovalRequestArgs["respond"],
       context: toExecApprovalRequestContext(params.context),
       client: null,
       req: { id: "req-1", type: "req", method: "exec.approval.request" },
@@ -380,24 +374,14 @@ describe("exec approval handlers", () => {
   async function resolveExecApproval(params: {
     handlers: ExecApprovalHandlers;
     id: string;
-    respond: ExecApprovalResolveRespond;
+    respond: ReturnType<typeof vi.fn>;
     context: { broadcast: (event: string, payload: unknown) => void };
   }) {
     return params.handlers["exec.approval.resolve"]({
       params: { id: params.id, decision: "allow-once" } as ExecApprovalResolveArgs["params"],
-      respond: params.respond,
+      respond: params.respond as unknown as ExecApprovalResolveArgs["respond"],
       context: toExecApprovalResolveContext(params.context),
-      client: {
-        connect: {
-          client: {
-            id: "cli",
-            displayName: "CLI",
-            version: "1.0.0",
-            platform: "test",
-            mode: "cli",
-          },
-        },
-      } as unknown as ExecApprovalResolveArgs["client"],
+      client: null,
       req: { id: "req-2", type: "req", method: "exec.approval.resolve" },
       isWebchatConnect: execApprovalNoop,
     });
@@ -407,7 +391,7 @@ describe("exec approval handlers", () => {
     const manager = new ExecApprovalManager();
     const handlers = createExecApprovalHandlers(manager);
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
-    const respond = vi.fn() as unknown as ExecApprovalRequestRespond;
+    const respond = vi.fn();
     const context = {
       broadcast: (event: string, payload: unknown) => {
         broadcasts.push({ event, payload });
@@ -478,7 +462,7 @@ describe("exec approval handlers", () => {
       undefined,
     );
 
-    const resolveRespond = vi.fn() as unknown as ExecApprovalResolveRespond;
+    const resolveRespond = vi.fn();
     await resolveExecApproval({
       handlers,
       id,
@@ -501,7 +485,7 @@ describe("exec approval handlers", () => {
     const manager = new ExecApprovalManager();
     const handlers = createExecApprovalHandlers(manager);
     const respond = vi.fn();
-    const resolveRespond = vi.fn() as unknown as ExecApprovalResolveRespond;
+    const resolveRespond = vi.fn();
 
     const resolveContext = {
       broadcast: () => {},
@@ -574,29 +558,32 @@ describe("gateway healthHandlers.status scope handling", () => {
     vi.mocked(status.getStatusSummary).mockClear();
   });
 
-  it("requests redacted status for non-admin clients", async () => {
+  async function runHealthStatus(scopes: string[]) {
     const respond = vi.fn();
     const status = await import("../../commands/status.js");
     const { healthHandlers } = await import("./health.js");
 
     await healthHandlers.status({
-      respond,
-      client: { connect: { role: "operator", scopes: ["operator.read"] } },
-    } as unknown as HealthStatusHandlerParams);
+      req: {} as never,
+      params: {} as never,
+      respond: respond as never,
+      context: {} as never,
+      client: { connect: { role: "operator", scopes } } as never,
+      isWebchatConnect: () => false,
+    });
+
+    return { respond, status };
+  }
+
+  it("requests redacted status for non-admin clients", async () => {
+    const { respond, status } = await runHealthStatus(["operator.read"]);
 
     expect(vi.mocked(status.getStatusSummary)).toHaveBeenCalledWith({ includeSensitive: false });
     expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
   });
 
   it("requests full status for admin clients", async () => {
-    const respond = vi.fn();
-    const status = await import("../../commands/status.js");
-    const { healthHandlers } = await import("./health.js");
-
-    await healthHandlers.status({
-      respond,
-      client: { connect: { role: "operator", scopes: ["operator.admin"] } },
-    } as unknown as HealthStatusHandlerParams);
+    const { respond, status } = await runHealthStatus(["operator.admin"]);
 
     expect(vi.mocked(status.getStatusSummary)).toHaveBeenCalledWith({ includeSensitive: true });
     expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);

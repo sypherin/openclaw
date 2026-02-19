@@ -62,8 +62,8 @@ export function buildInboundUserContextPrefix(ctx: TemplateContext): string {
 
   const conversationInfo = {
     message_id: safeTrim(ctx.MessageSid),
-    sender: safeTrim(ctx.SenderE164) || safeTrim(ctx.SenderId),
     conversation_label: isDirect ? undefined : safeTrim(ctx.ConversationLabel),
+    sender: safeTrim(ctx.SenderE164) ?? safeTrim(ctx.SenderId) ?? safeTrim(ctx.SenderUsername),
     group_subject: safeTrim(ctx.GroupSubject),
     group_channel: safeTrim(ctx.GroupChannel),
     group_space: safeTrim(ctx.GroupSpace),

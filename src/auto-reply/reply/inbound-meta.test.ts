@@ -11,7 +11,7 @@ function parseInboundMetaPayload(text: string): Record<string, unknown> {
 }
 
 function parseConversationInfoPayload(text: string): Record<string, unknown> {
-  const match = text.match(/Conversation info[^]*?```json\n([\s\S]*?)\n```/);
+  const match = text.match(/Conversation info \(untrusted metadata\):\n```json\n([\s\S]*?)\n```/);
   if (!match?.[1]) {
     throw new Error("missing conversation info json block");
   }
@@ -53,6 +53,36 @@ describe("buildInboundMetaSystemPrompt", () => {
 
     const payload = parseInboundMetaPayload(prompt);
     expect(payload["sender_id"]).toBe("289522496");
+  });
+
+  it("trims sender_id before storing", () => {
+    const prompt = buildInboundMetaSystemPrompt({
+      MessageSid: "457",
+      SenderId: "  289522496  ",
+      OriginatingTo: "telegram:-1001249586642",
+      OriginatingChannel: "telegram",
+      Provider: "telegram",
+      Surface: "telegram",
+      ChatType: "group",
+    } as TemplateContext);
+
+    const payload = parseInboundMetaPayload(prompt);
+    expect(payload["sender_id"]).toBe("289522496");
+  });
+
+  it("omits sender_id when blank", () => {
+    const prompt = buildInboundMetaSystemPrompt({
+      MessageSid: "458",
+      SenderId: "   ",
+      OriginatingTo: "telegram:-1001249586642",
+      OriginatingChannel: "telegram",
+      Provider: "telegram",
+      Surface: "telegram",
+      ChatType: "group",
+    } as TemplateContext);
+
+    const payload = parseInboundMetaPayload(prompt);
+    expect(payload["sender_id"]).toBeUndefined();
   });
 
   it("omits sender_id when not provided", () => {
