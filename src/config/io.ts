@@ -1,10 +1,9 @@
-import JSON5 from "json5";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { OpenClawConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./types.js";
+import JSON5 from "json5";
 import { loadDotEnv } from "../infra/dotenv.js";
 import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import {
@@ -39,6 +38,7 @@ import { applyMergePatch } from "./merge-patch.js";
 import { normalizeConfigPaths } from "./normalize-paths.js";
 import { resolveConfigPath, resolveDefaultConfigCandidates, resolveStateDir } from "./paths.js";
 import { applyConfigOverrides } from "./runtime-overrides.js";
+import type { OpenClawConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./types.js";
 import {
   validateConfigObjectRawWithPlugins,
   validateConfigObjectWithPlugins,
@@ -523,8 +523,19 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
   const candidatePaths = deps.configPath
     ? [requestedConfigPath]
     : resolveDefaultConfigCandidates(deps.env, deps.homedir);
-  const configPath =
+  const rawConfigPath =
     candidatePaths.find((candidate) => deps.fs.existsSync(candidate)) ?? requestedConfigPath;
+  // Follow symlinks so that writes go to the target file rather than
+  // replacing the symlink with a regular file (see sypherin/openclaw#symlink-fix).
+  let configPath = rawConfigPath;
+  try {
+    const stat = deps.fs.lstatSync(rawConfigPath);
+    if (stat.isSymbolicLink()) {
+      configPath = deps.fs.realpathSync(rawConfigPath);
+    }
+  } catch {
+    // If lstat fails the file doesn't exist yet; keep the original path.
+  }
 
   function loadConfig(): OpenClawConfig {
     try {
