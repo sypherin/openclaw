@@ -980,6 +980,9 @@ describe("gateway server auth/connect", () => {
         {};
       const legacy = paired[deviceId];
       expect(legacy).toBeDefined();
+      if (!legacy) {
+        throw new Error(`Expected paired metadata for deviceId=${deviceId}`);
+      }
       expect(legacy?.roles).toBeUndefined();
       expect(legacy?.scopes).toBeUndefined();
       delete legacy.roles;
