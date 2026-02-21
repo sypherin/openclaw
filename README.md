@@ -67,6 +67,10 @@ Key changes:
 - **Canvas capability TTL reduction** — reduced from 10 min to 5 min to shrink the window for token reuse
 - **Error path credential redaction** — wrapped error serialization in gateway, hooks loader, and plugins loader through `redactSensitiveText()` to prevent leaking secrets in logs
 - **Dangerous config startup warnings** — gateway now logs security warnings at startup when `dangerouslyDisableDeviceAuth`, `allowInsecureAuth`, or empty `trusted-proxy.allowUsers` are detected
+- **Browser eval deep hardening** — blocked `eval()`, `Function()` constructor, `String.fromCharCode` API name reconstruction, prototype chain abuse (`constructor.constructor`), `setTimeout`/`setInterval` with string/Function args, `document.domain` assignment, `window.location` writes, `Object.getOwnPropertyNames(window)` introspection, and `localStorage`/`sessionStorage` read access (token exfiltration prevention)
+- **Explicit gateway method scopes** — replaced prefix-based admin scope matching with explicit method-to-scope entries; prefix fallback now emits runtime warnings for unclassified methods
+- **Plugin install code scan enforcement** — critical code pattern findings now block plugin installation (was warn-only); `--force` flag available for explicit override
+- **Slack menu token entropy** — replaced `Math.random()` with `crypto.randomBytes(8)` for external arg menu tokens
 
 ### Hook System Fixes
 
