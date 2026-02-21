@@ -1,10 +1,10 @@
-import type { OpenClawConfig } from "../../config/config.js";
-import type { GroupKeyResolution, SessionEntry } from "../../config/sessions.js";
-import type { TemplateContext } from "../templating.js";
 import { getChannelDock } from "../../channels/dock.js";
 import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
+import type { OpenClawConfig } from "../../config/config.js";
+import type { GroupKeyResolution, SessionEntry } from "../../config/sessions.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { normalizeGroupActivation } from "../group-activation.js";
+import type { TemplateContext } from "../templating.js";
 
 function extractGroupId(raw: string | undefined | null): string | undefined {
   const trimmed = (raw ?? "").trim();
@@ -140,11 +140,25 @@ export function buildGroupIntro(params: {
     activation === "always"
       ? "Be extremely selective: reply only when directly addressed or clearly helpful. Otherwise stay silent."
       : undefined;
+  const triggerMustRespondLine =
+    activation !== "always"
+      ? `You MUST always respond when invoked — you are only called when someone explicitly mentions you, so silence is never appropriate. Never output "${params.silentToken}" or stay silent in trigger-only mode.`
+      : undefined;
   const lurkLine =
-    "Be a good group participant: mostly lurk and follow the conversation; reply only when directly addressed or you can add clear value. Emoji reactions are welcome when available.";
+    activation === "always"
+      ? "Be a good group participant: mostly lurk and follow the conversation; reply only when directly addressed or you can add clear value. Emoji reactions are welcome when available."
+      : "Be a good group participant. Write naturally and address what the sender said or asked.";
   const styleLine =
     "Write like a human. Avoid Markdown tables. Don't type literal \\n sequences; use real line breaks sparingly.";
-  return [activationLine, providerIdsLine, silenceLine, cautionLine, lurkLine, styleLine]
+  return [
+    activationLine,
+    providerIdsLine,
+    silenceLine,
+    cautionLine,
+    triggerMustRespondLine,
+    lurkLine,
+    styleLine,
+  ]
     .filter(Boolean)
     .join(" ")
     .concat(" Address the specific sender noted in the message context.");
