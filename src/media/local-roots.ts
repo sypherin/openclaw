@@ -25,6 +25,18 @@ export function getAgentScopedMediaLocalRoots(
   agentId?: string,
 ): readonly string[] {
   const roots = buildMediaLocalRoots(resolveStateDir());
+
+  // Always include the configured default workspace even when agentId is not
+  // provided.  This covers setups where the workspace lives outside the state
+  // dir (e.g. ~/.openclaw-config/workspace vs ~/.openclaw/workspace).
+  const defaultWorkspace = cfg.agents?.defaults?.workspace?.trim();
+  if (defaultWorkspace) {
+    const normalizedDefault = path.resolve(defaultWorkspace);
+    if (!roots.includes(normalizedDefault)) {
+      roots.push(normalizedDefault);
+    }
+  }
+
   if (!agentId?.trim()) {
     return roots;
   }

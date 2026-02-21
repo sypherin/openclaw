@@ -12,9 +12,9 @@ export function buildCronEventPrompt(pendingEvents: string[]): string {
     );
   }
   return (
-    "A scheduled reminder has been triggered. The reminder content is:\n\n" +
+    "A scheduled task has been triggered. Execute the following instructions now:\n\n" +
     eventText +
-    "\n\nPlease relay this reminder to the user in a helpful and friendly way."
+    "\n\nPerform the actions described above. If the instructions say to check, search, or run something — do it. Only report results to the user if the instructions say to. If nothing noteworthy is found, reply NO_REPLY."
   );
 }
 

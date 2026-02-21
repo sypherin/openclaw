@@ -5,7 +5,7 @@
 # Patches applied:
 #   1. Assistant content as string (not array) — prevents models from mimicking JSON structure
 #   2. Empty tool call filter — strips toolCall blocks with empty names (NVIDIA GLM-5 bug)
-#   3. Reasoning→text fallback — promotes thinking blocks to text when no text/tool blocks exist
+#   3. Reasoning→text fallback — promotes thinking to text when no text/tool blocks exist (skips reasoning=true models)
 #   4. 120s per-request timeout — enables faster failover instead of 10-min default hang
 #   5. Kimi K2.5 tool call ID normalization — uses functions.name:idx format (4x reliability)
 #   6. Text-to-tool-call fallback parser — recovers tool calls output as text content
@@ -96,9 +96,11 @@ FALLBACK_PATCH = '''            // Filter out invalid/empty tool calls (e.g. NVI
             });
             // Fallback: if model returned only reasoning_content (no text, no tool calls),
             // promote thinking to text so the user sees a response (NVIDIA GLM-4.7, Kimi K2.5)
+            // Skip promotion for models with reasoning=true — their thinking is genuine
+            // chain-of-thought, not a misplaced answer (e.g., local llama with reasoning_content)
             const hasTextBlock = output.content.some(b => b.type === "text" && b.text && b.text.length > 0);
             const hasToolCall = output.content.some(b => b.type === "toolCall");
-            if (!hasTextBlock && !hasToolCall) {
+            if (!hasTextBlock && !hasToolCall && !model.reasoning) {
                 const thinkingBlock = output.content.find(b => b.type === "thinking" && b.thinking && b.thinking.length > 0);
                 if (thinkingBlock) {
                     const textBlock = { type: "text", text: thinkingBlock.thinking };
