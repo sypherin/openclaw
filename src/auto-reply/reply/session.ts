@@ -403,19 +403,27 @@ export async function initSessionState(params: {
     });
   }
 
+  const rawBodyForAgent = normalizeInboundTextNewlines(
+    bodyStripped ??
+      ctx.BodyForAgent ??
+      ctx.Body ??
+      ctx.CommandBody ??
+      ctx.RawBody ??
+      ctx.BodyForCommands ??
+      "",
+  );
+  // In group chats, strip @mention patterns (e.g. @96800040042692) from the agent prompt.
+  // These are numeric LID/JID references that confuse the LLM; the mention intent is already
+  // captured in was_mentioned metadata.
+  const cleanedBodyForAgent = isGroup
+    ? stripMentions(rawBodyForAgent, ctx, cfg, agentId)
+    : rawBodyForAgent;
+
   const sessionCtx: TemplateContext = {
     ...ctx,
     // Keep BodyStripped aligned with Body (best default for agent prompts).
     // RawBody is reserved for command/directive parsing and may omit context.
-    BodyStripped: normalizeInboundTextNewlines(
-      bodyStripped ??
-        ctx.BodyForAgent ??
-        ctx.Body ??
-        ctx.CommandBody ??
-        ctx.RawBody ??
-        ctx.BodyForCommands ??
-        "",
-    ),
+    BodyStripped: cleanedBodyForAgent,
     SessionId: sessionId,
     IsNewSession: isNewSession ? "true" : "false",
   };
