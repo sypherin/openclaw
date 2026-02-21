@@ -259,19 +259,21 @@ describe("BrowserEvalSecurity", () => {
   // Warning-level checks (allowed but flagged)
   // =========================================================================
 
-  describe("warning-level checks", () => {
-    it("warns on eval() usage but allows", () => {
+  describe("eval and Function constructor blocking", () => {
+    it("blocks eval() usage", () => {
       const result = security.validate('eval("1+1")');
-      expect(result.allowed).toBe(true);
-      expect(result.warnings).toContain("Warning: eval() usage detected - potential double-eval");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("eval()");
     });
 
-    it("warns on Function constructor but allows", () => {
+    it("blocks Function constructor", () => {
       const result = security.validate('new Function("return 1")');
-      expect(result.allowed).toBe(true);
-      expect(result.warnings).toContain("Warning: Function constructor usage detected");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("Function constructor");
     });
+  });
 
+  describe("warning-level checks", () => {
     it("warns on innerHTML assignment but allows", () => {
       const result = security.validate('el.innerHTML = "<b>bold</b>"');
       expect(result.allowed).toBe(true);
@@ -291,11 +293,9 @@ describe("BrowserEvalSecurity", () => {
     });
 
     it("can accumulate multiple warnings", () => {
-      const result = security.validate(
-        'eval("test"); el.innerHTML = "<div>x</div>"; document.write("y")',
-      );
+      const result = security.validate('el.innerHTML = "<div>x</div>"; document.write("y")');
       expect(result.allowed).toBe(true);
-      expect(result.warnings?.length).toBeGreaterThanOrEqual(3);
+      expect(result.warnings?.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -324,16 +324,20 @@ describe("BrowserEvalSecurity", () => {
       expect(security.validate("Math.random()").allowed).toBe(true);
     });
 
-    it("allows reading localStorage (but not writing)", () => {
-      expect(security.validate('localStorage.getItem("key")').allowed).toBe(true);
+    it("blocks localStorage read access (token exfiltration prevention)", () => {
+      expect(security.validate('localStorage.getItem("key")').allowed).toBe(false);
     });
 
     it("allows Array operations", () => {
       expect(security.validate("[1,2,3].map(x => x * 2)").allowed).toBe(true);
     });
 
-    it("allows reading window.location", () => {
+    it("allows reading window.location.href", () => {
       expect(security.validate("window.location.href").allowed).toBe(true);
+    });
+
+    it("blocks writing window.location.href", () => {
+      expect(security.validate('window.location.href = "https://evil.com"').allowed).toBe(false);
     });
   });
 
@@ -373,6 +377,52 @@ describe("BrowserEvalSecurity", () => {
 
     it("catches Worker with extra whitespace", () => {
       const result = security.validate('new  Worker  ("worker.js")');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks String.fromCharCode bypass", () => {
+      const result = security.validate("String.fromCharCode(102,101,116,99,104)");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("indirect API access");
+    });
+
+    it("blocks prototype chain abuse via constructor.constructor", () => {
+      const result = security.validate('[].constructor.constructor("return fetch")()');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks setTimeout with Function argument", () => {
+      const result = security.validate('setTimeout(new Function("fetch(url)"), 0)');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks setTimeout with string argument", () => {
+      const result = security.validate('setTimeout("fetch(url)", 0)');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks document.domain assignment", () => {
+      const result = security.validate('document.domain = "evil.com"');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks window.location.href assignment", () => {
+      const result = security.validate('window.location.href = "https://evil.com"');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks Object introspection on window", () => {
+      const result = security.validate("Object.getOwnPropertyNames(window)");
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks localStorage bracket notation", () => {
+      const result = security.validate('localStorage["token"]');
+      expect(result.allowed).toBe(false);
+    });
+
+    it("blocks sessionStorage.getItem read", () => {
+      const result = security.validate('sessionStorage.getItem("auth")');
       expect(result.allowed).toBe(false);
     });
   });

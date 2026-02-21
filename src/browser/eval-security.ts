@@ -99,15 +99,13 @@ const NETWORK_REQUEST_PATTERNS = [
 ];
 
 const STORAGE_ACCESS_PATTERNS = [
-  // LocalStorage
-  /localStorage\.setItem/i,
-  /localStorage\.removeItem/i,
-  /localStorage\.clear/i,
+  // LocalStorage (block both read and write — getItem can leak tokens/session data)
+  /localStorage\s*\.\s*(?:getItem|setItem|removeItem|clear|key)\s*\(/i,
+  /localStorage\s*\[\s*['"`]/i,
 
-  // SessionStorage
-  /sessionStorage\.setItem/i,
-  /sessionStorage\.removeItem/i,
-  /sessionStorage\.clear/i,
+  // SessionStorage (block both read and write)
+  /sessionStorage\s*\.\s*(?:getItem|setItem|removeItem|clear|key)\s*\(/i,
+  /sessionStorage\s*\[\s*['"`]/i,
 ];
 
 const COOKIE_ACCESS_PATTERNS = [
@@ -215,6 +213,19 @@ export class BrowserEvalSecurity {
       /\bnew\s+Proxy\s*\(/i,
       // import() dynamic imports
       /\bimport\s*\(/i,
+      // String.fromCharCode / fromCodePoint can reconstruct blocked API names
+      /String\s*\.\s*from(?:CharCode|CodePoint)\s*\(/i,
+      // Prototype chain abuse: constructor.constructor("return fetch")()
+      /\.constructor\s*\.\s*constructor\s*\(/i,
+      /\.constructor\s*\(/i,
+      // setTimeout/setInterval with Function or string argument (deferred eval bypass)
+      /(?:setTimeout|setInterval)\s*\(\s*(?:new\s+)?Function/i,
+      /(?:setTimeout|setInterval)\s*\(\s*['"`]/i,
+      // Cross-origin manipulation via location/domain
+      /\bdocument\s*\.\s*domain\s*=/i,
+      /\bwindow\s*\.\s*location\s*\.\s*(?:href|assign|replace)\s*=/i,
+      // Object introspection for sandbox escape
+      /Object\s*\.\s*(?:getOwnPropertyNames|getOwnPropertyDescriptor|getPrototypeOf)\s*\(\s*(?:window|self|globalThis)/i,
     ];
     for (const pattern of INDIRECT_ACCESS_PATTERNS) {
       if (pattern.test(code)) {
@@ -226,13 +237,24 @@ export class BrowserEvalSecurity {
       }
     }
 
+    // Block eval() and Function constructor — these enable arbitrary code execution
+    // that bypasses all pattern-based validation above
+    if (/\beval\s*\(/i.test(code)) {
+      return {
+        allowed: false,
+        reason: "Blocked: eval() usage detected — nested eval bypasses security validation",
+        warnings,
+      };
+    }
+    if (/\bFunction\s*\(/i.test(code)) {
+      return {
+        allowed: false,
+        reason: "Blocked: Function constructor detected — enables arbitrary code execution",
+        warnings,
+      };
+    }
+
     // Additional warning-level checks (not blocking, but logged)
-    if (/eval\s*\(/i.test(code)) {
-      warnings.push("Warning: eval() usage detected - potential double-eval");
-    }
-    if (/Function\s*\(/i.test(code)) {
-      warnings.push("Warning: Function constructor usage detected");
-    }
     if (/\.innerHTML\s*=/i.test(code)) {
       warnings.push("Warning: innerHTML assignment detected - potential XSS");
     }
