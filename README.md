@@ -60,6 +60,13 @@ Key changes:
 - **SafeBins path trust hardening** — extracted trust resolver with stricter path validation (upstream)
 - **Cron webhook SSRF guard** — guards cron webhook delivery against SSRF (upstream)
 - **Telegram command sanitization** — sanitizes native command names for Telegram API (upstream)
+- **ReDoS prevention** — rewrote external-content suspicious pattern regexes with bounded quantifiers and added input length cap to prevent catastrophic backtracking
+- **FTS5 injection hardening** — strips FTS reserved tokens (`AND`, `OR`, `NOT`, `NEAR`) and caps token count in hybrid memory search queries
+- **Browser eval sandbox hardening** — blocks indirect API access patterns (`window["..."]`, `Reflect.get`, `new Proxy`, dynamic `import()`) in the eval security validator
+- **Cross-protocol WebSocket hijacking (CSWSH) protection** — origin check now validates protocol compatibility (HTTPS↔WSS, HTTP↔WS) with loopback exemption for local dev
+- **Canvas capability TTL reduction** — reduced from 10 min to 5 min to shrink the window for token reuse
+- **Error path credential redaction** — wrapped error serialization in gateway, hooks loader, and plugins loader through `redactSensitiveText()` to prevent leaking secrets in logs
+- **Dangerous config startup warnings** — gateway now logs security warnings at startup when `dangerouslyDisableDeviceAuth`, `allowInsecureAuth`, or empty `trusted-proxy.allowUsers` are detected
 
 ### Hook System Fixes
 
@@ -71,7 +78,8 @@ Key changes:
 - **LLM rate limit circuit breaker** — replaced retry loop with circuit breaker pattern + failover notifications
 - **`<think>` tag leakage** — prevented thinking block content from leaking into streamed output
 - **Android cleartext config** — fixed cleartext traffic configuration for Android gateway
-- **Merge conflict resolution** — clean merges maintained across 7 upstream syncs (Jan 30 — Feb 15)
+- **Merge conflict resolution** — clean merges maintained across 8 upstream syncs (Jan 30 — Feb 21)
+- **Slug generator model fix** — `llm-slug-generator` hook now reads the primary model from config (`agents.defaults.model.primary`) instead of falling back to hardcoded `anthropic/claude-opus-4-6`, which caused 401 errors when no Anthropic key is configured
 
 ### Smart Model Routing & Context Optimization
 
