@@ -104,3 +104,4 @@ package-lock.json
 
 # Local iOS signing overrides
 apps/ios/LocalSigning.xcconfig
+.ant-colony/
