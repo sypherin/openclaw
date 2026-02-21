@@ -9,31 +9,48 @@
  */
 
 /**
+ * Maximum content length to run suspicious pattern checks against.
+ * Content exceeding this is wrapped as untrusted regardless — no need to scan.
+ * This prevents ReDoS on very large inputs.
+ */
+const SUSPICIOUS_PATTERN_MAX_INPUT_LENGTH = 10_000;
+
+/**
  * Patterns that may indicate prompt injection attempts.
  * These are logged for monitoring but content is still processed (wrapped safely).
+ *
+ * SECURITY: Patterns are written to avoid catastrophic backtracking (ReDoS):
+ *   - No nested quantifiers (e.g. `(a+)+`)
+ *   - `.*` replaced with `[^\n]{0,80}` to bound backtracking
+ *   - `\s+` inside optional groups replaced with `\s{0,5}`
  */
 const SUSPICIOUS_PATTERNS = [
-  /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)/i,
-  /disregard\s+(all\s+)?(previous|prior|above)/i,
-  /forget\s+(everything|all|your)\s+(instructions?|rules?|guidelines?)/i,
-  /you\s+are\s+now\s+(a|an)\s+/i,
-  /new\s+instructions?:/i,
-  /system\s*:?\s*(prompt|override|command)/i,
-  /\bexec\b.*command\s*=/i,
-  /elevated\s*=\s*true/i,
+  /ignore\s{1,5}(?:all\s{0,5})?(?:previous|prior|above)\s{1,5}(?:instructions?|prompts?)/i,
+  /disregard\s{1,5}(?:all\s{0,5})?(?:previous|prior|above)/i,
+  /forget\s{1,5}(?:everything|all|your)\s{1,5}(?:instructions?|rules?|guidelines?)/i,
+  /you\s{1,5}are\s{1,5}now\s{1,5}(?:a|an)\s/i,
+  /new\s{1,5}instructions?:/i,
+  /system\s{0,3}:?\s{0,3}(?:prompt|override|command)/i,
+  /\bexec\b[^\n]{0,80}command\s{0,3}=/i,
+  /elevated\s{0,3}=\s{0,3}true/i,
   /rm\s+-rf/i,
-  /delete\s+all\s+(emails?|files?|data)/i,
+  /delete\s{1,5}all\s{1,5}(?:emails?|files?|data)/i,
   /<\/?system>/i,
-  /\]\s*\n\s*\[?(system|assistant|user)\]?:/i,
+  /\]\s{0,5}\n\s{0,5}\[?(?:system|assistant|user)\]?:/i,
 ];
 
 /**
  * Check if content contains suspicious patterns that may indicate injection.
  */
 export function detectSuspiciousPatterns(content: string): string[] {
+  // Cap input length to prevent ReDoS on very large content
+  const input =
+    content.length > SUSPICIOUS_PATTERN_MAX_INPUT_LENGTH
+      ? content.slice(0, SUSPICIOUS_PATTERN_MAX_INPUT_LENGTH)
+      : content;
   const matches: string[] = [];
   for (const pattern of SUSPICIOUS_PATTERNS) {
-    if (pattern.test(content)) {
+    if (pattern.test(input)) {
       matches.push(pattern.source);
     }
   }

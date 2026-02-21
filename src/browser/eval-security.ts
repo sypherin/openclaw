@@ -204,6 +204,28 @@ export class BrowserEvalSecurity {
       }
     }
 
+    // Block indirect API access patterns that bypass direct pattern matching
+    const INDIRECT_ACCESS_PATTERNS = [
+      // Bracket notation: window['fetch'], globalThis["XMLHttpRequest"]
+      /(?:window|self|globalThis|top|parent|frames)\s*\[\s*['"`]/i,
+      // String concatenation to build API names: "fe" + "tch"
+      /['"`][a-z]{1,6}['"`]\s*\+\s*['"`][a-z]{1,8}['"`]/i,
+      // Reflect/Proxy-based access
+      /\bReflect\s*\.\s*(?:get|apply|construct)\b/i,
+      /\bnew\s+Proxy\s*\(/i,
+      // import() dynamic imports
+      /\bimport\s*\(/i,
+    ];
+    for (const pattern of INDIRECT_ACCESS_PATTERNS) {
+      if (pattern.test(code)) {
+        return {
+          allowed: false,
+          reason: `Blocked: indirect API access pattern detected (${pattern.source})`,
+          warnings,
+        };
+      }
+    }
+
     // Additional warning-level checks (not blocking, but logged)
     if (/eval\s*\(/i.test(code)) {
       warnings.push("Warning: eval() usage detected - potential double-eval");
@@ -235,7 +257,9 @@ export class BrowserEvalSecurity {
     targetId?: string;
     ref?: string;
   }): void {
-    if (!this.config.logEvaluations) return;
+    if (!this.config.logEvaluations) {
+      return;
+    }
 
     const entry: EvalLogEntry = {
       id: `eval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

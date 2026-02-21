@@ -1,4 +1,5 @@
 import { defaultVoiceWakeTriggers } from "../infra/voicewake.js";
+import { redactSensitiveText } from "../logging/redact.js";
 
 export function normalizeVoiceWakeTriggers(input: unknown): string[] {
   const raw = Array.isArray(input) ? input : [];
@@ -33,8 +34,8 @@ export function formatError(err: unknown): string {
     return `status=${statusText} code=${codeText}`;
   }
   try {
-    return JSON.stringify(err, null, 2);
+    return redactSensitiveText(JSON.stringify(err, null, 2));
   } catch {
-    return String(err);
+    return redactSensitiveText(String(err));
   }
 }

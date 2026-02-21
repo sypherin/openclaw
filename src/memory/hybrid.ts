@@ -30,12 +30,23 @@ export type HybridKeywordResult = {
   textScore: number;
 };
 
+/**
+ * FTS operator tokens that must be stripped to prevent semantic injection.
+ * SQLite FTS5 treats these as special operators when unquoted.
+ */
+const FTS_RESERVED_TOKENS = new Set(["and", "or", "not", "near"]);
+
+/** Maximum number of tokens in a single FTS query to prevent resource abuse. */
+const FTS_MAX_TOKENS = 20;
+
 export function buildFtsQuery(raw: string): string | null {
   const tokens =
     raw
       .match(/[\p{L}\p{N}_]+/gu)
       ?.map((t) => t.trim())
-      .filter(Boolean) ?? [];
+      .filter(Boolean)
+      .filter((t) => !FTS_RESERVED_TOKENS.has(t.toLowerCase()))
+      .slice(0, FTS_MAX_TOKENS) ?? [];
   if (tokens.length === 0) {
     return null;
   }

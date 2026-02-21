@@ -1,7 +1,7 @@
 import chalk from "chalk";
-import type { loadConfig } from "../config/config.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { resolveConfiguredModelRef } from "../agents/model-selection.js";
+import type { loadConfig } from "../config/config.js";
 import { getResolvedLoggerSettings } from "../logging.js";
 
 export function logGatewayStartup(params: {
@@ -36,5 +36,26 @@ export function logGatewayStartup(params: {
   params.log.info(`log file: ${getResolvedLoggerSettings().file}`);
   if (params.isNixMode) {
     params.log.info("gateway: running in Nix mode (config managed externally)");
+  }
+
+  // Security warnings for dangerous config flags
+  const controlUi = params.cfg.gateway?.controlUi;
+  if (controlUi?.dangerouslyDisableDeviceAuth === true) {
+    params.log.info(
+      `${chalk.bgRed.white(" SECURITY WARNING ")} dangerouslyDisableDeviceAuth is enabled — device identity verification is bypassed for Control UI connections`,
+    );
+  }
+  if (controlUi?.allowInsecureAuth === true) {
+    params.log.info(
+      `${chalk.bgRed.white(" SECURITY WARNING ")} allowInsecureAuth is enabled — auth tokens may be transmitted over plaintext HTTP`,
+    );
+  }
+
+  // Warn if trusted-proxy has empty allowUsers
+  const trustedProxy = params.cfg.gateway?.auth?.trustedProxy;
+  if (trustedProxy?.enabled && (!trustedProxy.allowUsers || trustedProxy.allowUsers.length === 0)) {
+    params.log.info(
+      `${chalk.bgYellow.black(" SECURITY NOTICE ")} trusted-proxy mode is active with empty allowUsers — all proxy-authenticated users are accepted`,
+    );
   }
 }

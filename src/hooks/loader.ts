@@ -8,6 +8,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { OpenClawConfig } from "../config/config.js";
+import { redactSensitiveText } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isPathInsideWithRealpath } from "../security/scan-paths.js";
 import { resolveHookConfig } from "./config.js";
@@ -113,13 +114,13 @@ export async function loadInternalHooks(
         loadedCount++;
       } catch (err) {
         log.error(
-          `Failed to load hook ${entry.hook.name}: ${err instanceof Error ? err.message : String(err)}`,
+          `Failed to load hook ${entry.hook.name}: ${redactSensitiveText(err instanceof Error ? err.message : String(err))}`,
         );
       }
     }
   } catch (err) {
     log.error(
-      `Failed to load directory-based hooks: ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to load directory-based hooks: ${redactSensitiveText(err instanceof Error ? err.message : String(err))}`,
     );
   }
 
@@ -178,7 +179,7 @@ export async function loadInternalHooks(
       loadedCount++;
     } catch (err) {
       log.error(
-        `Failed to load hook handler from ${handlerConfig.module}: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to load hook handler from ${handlerConfig.module}: ${redactSensitiveText(err instanceof Error ? err.message : String(err))}`,
       );
     }
   }
