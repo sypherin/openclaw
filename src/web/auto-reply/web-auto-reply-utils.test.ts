@@ -59,7 +59,7 @@ describe("isBotMentionedFromTargets", () => {
     expect(isBotMentionedFromTargets(msg, mentionCfg, targets)).toBe(true);
   });
 
-  it("ignores JID mentions in self-chat mode", () => {
+  it("detects self-mention via JID in self-chat mode", () => {
     const cfg = { mentionRegexes: [/\bopenclaw\b/i], allowFrom: ["+999"] };
     const msg = makeMsg({
       body: "@owner ping",
@@ -68,7 +68,9 @@ describe("isBotMentionedFromTargets", () => {
       selfJid: "999@s.whatsapp.net",
     });
     const targets = resolveMentionTargets(msg);
-    expect(isBotMentionedFromTargets(msg, cfg, targets)).toBe(false);
+    // In self-chat mode, @mentions that resolve to the bot's own number should still match
+    // (e.g. WhatsApp LID mentions in group chats with requireMention: true)
+    expect(isBotMentionedFromTargets(msg, cfg, targets)).toBe(true);
 
     const msgTextMention = makeMsg({
       body: "openclaw ping",

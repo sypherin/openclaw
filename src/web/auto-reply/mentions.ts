@@ -1,7 +1,7 @@
-import type { loadConfig } from "../../config/config.js";
-import type { WebInboundMsg } from "./types.js";
 import { buildMentionRegexes, normalizeMentionText } from "../../auto-reply/reply/mentions.js";
+import type { loadConfig } from "../../config/config.js";
 import { isSelfChatMode, jidToE164, normalizeE164 } from "../../utils.js";
+import type { WebInboundMsg } from "./types.js";
 
 export type MentionConfig = {
   mentionRegexes: RegExp[];
@@ -57,7 +57,17 @@ export function isBotMentionedFromTargets(
     // If the message explicitly mentions someone else, do not fall back to regex matches.
     return false;
   } else if (hasMentions && isSelfChat) {
-    // Self-chat mode: ignore WhatsApp @mention JIDs, otherwise @mentioning the owner in group chats triggers the bot.
+    // Self-chat mode: the bot IS the owner's WhatsApp identity.
+    // Still check if the resolved mention JIDs match our own E.164/JID —
+    // this handles @mentions via LID that resolve to the bot's phone number.
+    // We just skip the early `return false` below so regex/digit fallbacks
+    // remain reachable when someone else is mentioned.
+    if (targets.selfE164 && targets.normalizedMentions.includes(targets.selfE164)) {
+      return true;
+    }
+    if (targets.selfJid && targets.normalizedMentions.includes(targets.selfJid)) {
+      return true;
+    }
   }
   const bodyClean = clean(msg.body);
   if (mentionCfg.mentionRegexes.some((re) => re.test(bodyClean))) {
