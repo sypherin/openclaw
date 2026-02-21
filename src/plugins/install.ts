@@ -154,6 +154,8 @@ async function installPluginFromPackageDir(params: {
   mode?: "install" | "update";
   dryRun?: boolean;
   expectedPluginId?: string;
+  /** When true, install proceeds even if critical code patterns are detected. */
+  force?: boolean;
 }): Promise<InstallPluginResult> {
   const { logger, timeoutMs, mode, dryRun } = resolveTimedPluginInstallModeOptions(params);
 
@@ -205,7 +207,8 @@ async function installPluginFromPackageDir(params: {
     forcedScanEntries.push(resolvedEntry);
   }
 
-  // Scan plugin source for dangerous code patterns (warn-only; never blocks install)
+  // Scan plugin source for dangerous code patterns.
+  // Critical findings block installation unless explicitly overridden.
   try {
     const scanSummary = await skillScanner.scanDirectoryWithSummary(params.packageDir, {
       includeFiles: forcedScanEntries,
@@ -215,8 +218,15 @@ async function installPluginFromPackageDir(params: {
         .filter((f) => f.severity === "critical")
         .map((f) => `${f.message} (${f.file}:${f.line})`)
         .join("; ");
+      // Block installation on critical findings (can be overridden with --force)
+      if (!params.force) {
+        return {
+          ok: false,
+          error: `Plugin "${pluginId}" blocked: dangerous code patterns detected: ${criticalDetails}. Use --force to override.`,
+        };
+      }
       logger.warn?.(
-        `WARNING: Plugin "${pluginId}" contains dangerous code patterns: ${criticalDetails}`,
+        `WARNING: Plugin "${pluginId}" contains dangerous code patterns (--force override): ${criticalDetails}`,
       );
     } else if (scanSummary.warn > 0) {
       logger.warn?.(

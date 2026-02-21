@@ -112,9 +112,29 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "set-heartbeats",
     "system-event",
     "agents.files.set",
+    // Previously matched by prefix "exec.approvals." — now explicit
+    "exec.approvals.get",
+    "exec.approvals.set",
+    "exec.approvals.node.get",
+    "exec.approvals.node.set",
+    // Previously matched by prefix "config." — now explicit
+    "config.set",
+    "config.apply",
+    "config.patch",
+    "config.schema",
+    // Previously matched by prefix "wizard." — now explicit
+    "wizard.start",
+    "wizard.next",
+    "wizard.cancel",
+    "wizard.status",
+    // Previously matched by prefix "update." — now explicit
+    "update.run",
   ],
 };
 
+// Kept as safety net for any newly registered methods not yet in the explicit list.
+// Logs a warning at scope resolution time when a method is matched only by prefix,
+// signaling that it should be added to METHOD_SCOPE_GROUPS explicitly.
 const ADMIN_METHOD_PREFIXES = ["exec.approvals.", "config.", "wizard.", "update."] as const;
 
 const METHOD_SCOPE_BY_NAME = new Map<string, OperatorScope>(
@@ -123,12 +143,23 @@ const METHOD_SCOPE_BY_NAME = new Map<string, OperatorScope>(
   ),
 );
 
+// Track prefix-match warnings to emit at most once per method
+const prefixMatchWarned = new Set<string>();
+
 function resolveScopedMethod(method: string): OperatorScope | undefined {
   const explicitScope = METHOD_SCOPE_BY_NAME.get(method);
   if (explicitScope) {
     return explicitScope;
   }
   if (ADMIN_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix))) {
+    // Prefix fallback — method should be added to METHOD_SCOPE_GROUPS explicitly
+    if (!prefixMatchWarned.has(method)) {
+      prefixMatchWarned.add(method);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[method-scopes] WARNING: "${method}" matched via prefix fallback — add it to METHOD_SCOPE_GROUPS[ADMIN_SCOPE] for explicit classification`,
+      );
+    }
     return ADMIN_SCOPE;
   }
   return undefined;
