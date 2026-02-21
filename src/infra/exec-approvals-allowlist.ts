@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import {
   DEFAULT_SAFE_BINS,
   analyzeShellCommand,
@@ -12,32 +10,13 @@ import {
   type ExecCommandSegment,
 } from "./exec-approvals-analysis.js";
 import type { ExecAllowlistEntry } from "./exec-approvals.js";
+import {
+  SAFE_BIN_GENERIC_PROFILE,
+  SAFE_BIN_PROFILES,
+  type SafeBinProfile,
+  validateSafeBinArgv,
+} from "./exec-safe-bin-policy.js";
 import { isTrustedSafeBinPath } from "./exec-safe-bin-trust.js";
-
-function isPathLikeToken(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return false;
-  }
-  if (trimmed === "-") {
-    return false;
-  }
-  if (trimmed.startsWith("./") || trimmed.startsWith("../") || trimmed.startsWith("~")) {
-    return true;
-  }
-  if (trimmed.startsWith("/")) {
-    return true;
-  }
-  return /^[A-Za-z]:[\\/]/.test(trimmed);
-}
-
-function defaultFileExists(filePath: string): boolean {
-  try {
-    return fs.existsSync(filePath);
-  } catch {
-    return false;
-  }
-}
 
 export function normalizeSafeBins(entries?: string[]): Set<string> {
   if (!Array.isArray(entries)) {
@@ -56,74 +35,19 @@ export function resolveSafeBins(entries?: string[] | null): Set<string> {
   return normalizeSafeBins(entries ?? []);
 }
 
-function hasGlobToken(value: string): boolean {
-  // Safe bins are stdin-only; globbing is both surprising and a historical bypass vector.
-  // Note: we still harden execution-time expansion separately.
-  return /[*?[\]]/.test(value);
-}
-
-type SafeBinOptionPolicy = {
-  blockedShort?: ReadonlySet<string>;
-  blockedLong?: ReadonlySet<string>;
-};
-
-const SAFE_BIN_OPTION_POLICIES: Readonly<Record<string, SafeBinOptionPolicy>> = {
-  // sort can write arbitrary output paths via -o/--output, which breaks stdin-only guarantees.
-  sort: {
-    blockedShort: new Set(["o"]),
-    blockedLong: new Set(["output"]),
-  },
-  // grep recursion flags read from cwd (or provided roots), so they are not stdin-only.
-  grep: {
-    blockedShort: new Set(["d", "r"]),
-    blockedLong: new Set(["dereference-recursive", "directories", "recursive"]),
-  },
-};
-
-function parseLongOptionName(token: string): string | null {
-  if (!token.startsWith("--") || token === "--") {
-    return null;
-  }
-  const body = token.slice(2);
-  if (!body) {
-    return null;
-  }
-  const eqIndex = body.indexOf("=");
-  const name = (eqIndex >= 0 ? body.slice(0, eqIndex) : body).trim().toLowerCase();
-  return name.length > 0 ? name : null;
-}
-
-function hasBlockedSafeBinOption(execName: string, token: string): boolean {
-  const policy = SAFE_BIN_OPTION_POLICIES[execName];
-  if (!policy || !token.startsWith("-")) {
-    return false;
-  }
-  const longName = parseLongOptionName(token);
-  if (longName) {
-    return policy.blockedLong?.has(longName) ?? false;
-  }
-  if (token === "-" || token === "--") {
-    return false;
-  }
-  for (const ch of token.slice(1)) {
-    if (policy.blockedShort?.has(ch.toLowerCase())) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function isSafeBinUsage(params: {
   argv: string[];
   resolution: CommandResolution | null;
   safeBins: Set<string>;
-  cwd?: string;
-  fileExists?: (filePath: string) => boolean;
+  platform?: string | null;
   trustedSafeBinDirs?: ReadonlySet<string>;
+  safeBinProfiles?: Readonly<Record<string, SafeBinProfile>>;
+  safeBinGenericProfile?: SafeBinProfile;
+  isTrustedSafeBinPathFn?: typeof isTrustedSafeBinPath;
 }): boolean {
   // Windows host exec uses PowerShell, which has different parsing/expansion rules.
   // Keep safeBins conservative there (require explicit allowlist entries).
-  if (isWindowsPlatform(process.platform)) {
+  if (isWindowsPlatform(params.platform ?? process.platform)) {
     return false;
   }
   if (params.safeBins.size === 0) {
@@ -134,61 +58,27 @@ export function isSafeBinUsage(params: {
   if (!execName) {
     return false;
   }
-  const matchesSafeBin =
-    params.safeBins.has(execName) ||
-    (process.platform === "win32" && params.safeBins.has(path.parse(execName).name));
+  const matchesSafeBin = params.safeBins.has(execName);
   if (!matchesSafeBin) {
     return false;
   }
   if (!resolution?.resolvedPath) {
     return false;
   }
+  const isTrustedPath = params.isTrustedSafeBinPathFn ?? isTrustedSafeBinPath;
   if (
-    !isTrustedSafeBinPath({
+    !isTrustedPath({
       resolvedPath: resolution.resolvedPath,
       trustedDirs: params.trustedSafeBinDirs,
     })
   ) {
     return false;
   }
-  const cwd = params.cwd ?? process.cwd();
-  const exists = params.fileExists ?? defaultFileExists;
   const argv = params.argv.slice(1);
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (!token) {
-      continue;
-    }
-    if (token === "-") {
-      continue;
-    }
-    if (token.startsWith("-")) {
-      if (hasBlockedSafeBinOption(execName, token)) {
-        return false;
-      }
-      const eqIndex = token.indexOf("=");
-      if (eqIndex > 0) {
-        const value = token.slice(eqIndex + 1);
-        if (value && hasGlobToken(value)) {
-          return false;
-        }
-        if (value && (isPathLikeToken(value) || exists(path.resolve(cwd, value)))) {
-          return false;
-        }
-      }
-      continue;
-    }
-    if (hasGlobToken(token)) {
-      return false;
-    }
-    if (isPathLikeToken(token)) {
-      return false;
-    }
-    if (exists(path.resolve(cwd, token))) {
-      return false;
-    }
-  }
-  return true;
+  const safeBinProfiles = params.safeBinProfiles ?? SAFE_BIN_PROFILES;
+  const genericSafeBinProfile = params.safeBinGenericProfile ?? SAFE_BIN_GENERIC_PROFILE;
+  const profile = safeBinProfiles[execName] ?? genericSafeBinProfile;
+  return validateSafeBinArgv(argv, profile);
 }
 
 export type ExecAllowlistEvaluation = {
@@ -205,6 +95,8 @@ function evaluateSegments(
     allowlist: ExecAllowlistEntry[];
     safeBins: Set<string>;
     cwd?: string;
+    platform?: string | null;
+    trustedSafeBinDirs?: ReadonlySet<string>;
     skillBins?: Set<string>;
     autoAllowSkills?: boolean;
   },
@@ -231,7 +123,8 @@ function evaluateSegments(
       argv: segment.argv,
       resolution: segment.resolution,
       safeBins: params.safeBins,
-      cwd: params.cwd,
+      platform: params.platform,
+      trustedSafeBinDirs: params.trustedSafeBinDirs,
     });
     const skillAllow =
       allowSkills && segment.resolution?.executableName
@@ -256,6 +149,8 @@ export function evaluateExecAllowlist(params: {
   allowlist: ExecAllowlistEntry[];
   safeBins: Set<string>;
   cwd?: string;
+  platform?: string | null;
+  trustedSafeBinDirs?: ReadonlySet<string>;
   skillBins?: Set<string>;
   autoAllowSkills?: boolean;
 }): ExecAllowlistEvaluation {
@@ -272,6 +167,8 @@ export function evaluateExecAllowlist(params: {
         allowlist: params.allowlist,
         safeBins: params.safeBins,
         cwd: params.cwd,
+        platform: params.platform,
+        trustedSafeBinDirs: params.trustedSafeBinDirs,
         skillBins: params.skillBins,
         autoAllowSkills: params.autoAllowSkills,
       });
@@ -289,6 +186,8 @@ export function evaluateExecAllowlist(params: {
     allowlist: params.allowlist,
     safeBins: params.safeBins,
     cwd: params.cwd,
+    platform: params.platform,
+    trustedSafeBinDirs: params.trustedSafeBinDirs,
     skillBins: params.skillBins,
     autoAllowSkills: params.autoAllowSkills,
   });
@@ -316,6 +215,7 @@ export function evaluateShellAllowlist(params: {
   safeBins: Set<string>;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  trustedSafeBinDirs?: ReadonlySet<string>;
   skillBins?: Set<string>;
   autoAllowSkills?: boolean;
   platform?: string | null;
@@ -344,6 +244,8 @@ export function evaluateShellAllowlist(params: {
       allowlist: params.allowlist,
       safeBins: params.safeBins,
       cwd: params.cwd,
+      platform: params.platform,
+      trustedSafeBinDirs: params.trustedSafeBinDirs,
       skillBins: params.skillBins,
       autoAllowSkills: params.autoAllowSkills,
     });
@@ -377,6 +279,8 @@ export function evaluateShellAllowlist(params: {
       allowlist: params.allowlist,
       safeBins: params.safeBins,
       cwd: params.cwd,
+      platform: params.platform,
+      trustedSafeBinDirs: params.trustedSafeBinDirs,
       skillBins: params.skillBins,
       autoAllowSkills: params.autoAllowSkills,
     });
