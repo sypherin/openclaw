@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import type { OpenClawConfig } from "../config/config.js";
 import type { GatewayRequestHandler } from "../gateway/server-methods/types.js";
+import { redactSensitiveText } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isPathInsideWithRealpath } from "../security/scan-paths.js";
 import { resolveUserPath } from "../utils.js";
@@ -506,16 +507,17 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     try {
       mod = getJiti()(candidate.source) as OpenClawPluginModule;
     } catch (err) {
-      logger.error(`[plugins] ${record.id} failed to load from ${record.source}: ${String(err)}`);
+      const safeErr = redactSensitiveText(String(err));
+      logger.error(`[plugins] ${record.id} failed to load from ${record.source}: ${safeErr}`);
       record.status = "error";
-      record.error = String(err);
+      record.error = safeErr;
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
       registry.diagnostics.push({
         level: "error",
         pluginId: record.id,
         source: record.source,
-        message: `failed to load plugin: ${String(err)}`,
+        message: `failed to load plugin: ${safeErr}`,
       });
       continue;
     }
@@ -632,18 +634,19 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
     } catch (err) {
+      const safeErr = redactSensitiveText(String(err));
       logger.error(
-        `[plugins] ${record.id} failed during register from ${record.source}: ${String(err)}`,
+        `[plugins] ${record.id} failed during register from ${record.source}: ${safeErr}`,
       );
       record.status = "error";
-      record.error = String(err);
+      record.error = safeErr;
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
       registry.diagnostics.push({
         level: "error",
         pluginId: record.id,
         source: record.source,
-        message: `plugin failed during register: ${String(err)}`,
+        message: `plugin failed during register: ${safeErr}`,
       });
     }
   }

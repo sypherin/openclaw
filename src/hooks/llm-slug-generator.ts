@@ -5,13 +5,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { OpenClawConfig } from "../config/config.js";
 import {
   resolveDefaultAgentId,
   resolveAgentWorkspaceDir,
   resolveAgentDir,
 } from "../agents/agent-scope.js";
 import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import type { OpenClawConfig } from "../config/config.js";
 
 /**
  * Generate a short 1-2 word filename slug from session content using LLM
@@ -38,6 +38,18 @@ ${params.sessionContent.slice(0, 2000)}
 
 Reply with ONLY the slug, nothing else. Examples: "vendor-pitch", "api-design", "bug-fix"`;
 
+    // Resolve provider/model from agent config primary instead of hardcoded anthropic defaults
+    const primaryRef = params.cfg?.agents?.defaults?.model?.primary;
+    let provider: string | undefined;
+    let model: string | undefined;
+    if (typeof primaryRef === "string" && primaryRef.trim()) {
+      const slash = primaryRef.indexOf("/");
+      if (slash !== -1) {
+        provider = primaryRef.slice(0, slash).trim() || undefined;
+        model = primaryRef.slice(slash + 1).trim() || undefined;
+      }
+    }
+
     const result = await runEmbeddedPiAgent({
       sessionId: `slug-generator-${Date.now()}`,
       sessionKey: "temp:slug-generator",
@@ -47,6 +59,8 @@ Reply with ONLY the slug, nothing else. Examples: "vendor-pitch", "api-design", 
       agentDir,
       config: params.cfg,
       prompt,
+      provider,
+      model,
       timeoutMs: 15_000, // 15 second timeout
       runId: `slug-gen-${Date.now()}`,
     });
