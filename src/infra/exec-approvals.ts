@@ -39,6 +39,8 @@ export type ExecApprovalsDefaults = {
   ask?: ExecAsk;
   askFallback?: ExecSecurity;
   autoAllowSkills?: boolean;
+  /** Binary name patterns that always require approval, even under security "full". */
+  blocklist?: string[];
 };
 
 export type ExecAllowlistEntry = {
@@ -51,6 +53,8 @@ export type ExecAllowlistEntry = {
 
 export type ExecApprovalsAgent = ExecApprovalsDefaults & {
   allowlist?: ExecAllowlistEntry[];
+  /** Patterns that always require approval, even when security is "full". */
+  blocklist?: string[];
 };
 
 export type ExecApprovalsFile = {
@@ -78,6 +82,8 @@ export type ExecApprovalsResolved = {
   defaults: Required<ExecApprovalsDefaults>;
   agent: Required<ExecApprovalsDefaults>;
   allowlist: ExecAllowlistEntry[];
+  /** Binary name patterns that always require approval, even under security "full". */
+  blocklist: string[];
   file: ExecApprovalsFile;
 };
 
@@ -222,6 +228,7 @@ export function normalizeExecApprovals(file: ExecApprovalsFile): ExecApprovalsFi
       ask: file.defaults?.ask,
       askFallback: file.defaults?.askFallback,
       autoAllowSkills: file.defaults?.autoAllowSkills,
+      blocklist: file.defaults?.blocklist,
     },
     agents,
   };
@@ -387,6 +394,7 @@ export function resolveExecApprovalsFromFile(params: {
       fallbackAskFallback,
     ),
     autoAllowSkills: Boolean(defaults.autoAllowSkills ?? fallbackAutoAllowSkills),
+    blocklist: Array.isArray(defaults.blocklist) ? defaults.blocklist : [],
   };
   const resolvedAgent: Required<ExecApprovalsDefaults> = {
     security: normalizeSecurity(
@@ -401,11 +409,17 @@ export function resolveExecApprovalsFromFile(params: {
     autoAllowSkills: Boolean(
       agent.autoAllowSkills ?? wildcard.autoAllowSkills ?? resolvedDefaults.autoAllowSkills,
     ),
+    blocklist: Array.isArray(agent.blocklist) ? agent.blocklist : resolvedDefaults.blocklist,
   };
   const allowlist = [
     ...(Array.isArray(wildcard.allowlist) ? wildcard.allowlist : []),
     ...(Array.isArray(agent.allowlist) ? agent.allowlist : []),
   ];
+  const blocklist = [
+    ...(Array.isArray(defaults.blocklist) ? defaults.blocklist : []),
+    ...(Array.isArray(wildcard.blocklist) ? wildcard.blocklist : []),
+    ...(Array.isArray(agent.blocklist) ? agent.blocklist : []),
+  ].filter((p) => typeof p === "string" && p.trim().length > 0);
   return {
     path: params.path ?? resolveExecApprovalsPath(),
     socketPath: expandHomePrefix(
@@ -415,6 +429,7 @@ export function resolveExecApprovalsFromFile(params: {
     defaults: resolvedDefaults,
     agent: resolvedAgent,
     allowlist,
+    blocklist,
     file,
   };
 }
