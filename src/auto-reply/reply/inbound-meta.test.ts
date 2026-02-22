@@ -186,7 +186,7 @@ describe("buildInboundUserContextPrefix", () => {
     expect(conversationInfo["message_id"]).toBe("msg-123");
   });
 
-  it("includes message_id_full when it differs from message_id", () => {
+  it("prefers MessageSid when both MessageSid and MessageSidFull are present", () => {
     const text = buildInboundUserContextPrefix({
       ChatType: "group",
       MessageSid: "short-id",
@@ -195,18 +195,18 @@ describe("buildInboundUserContextPrefix", () => {
 
     const conversationInfo = parseConversationInfoPayload(text);
     expect(conversationInfo["message_id"]).toBe("short-id");
-    expect(conversationInfo["message_id_full"]).toBe("full-provider-message-id");
+    expect(conversationInfo["message_id_full"]).toBeUndefined();
   });
 
-  it("omits message_id_full when it matches message_id", () => {
+  it("falls back to MessageSidFull when MessageSid is missing", () => {
     const text = buildInboundUserContextPrefix({
       ChatType: "group",
-      MessageSid: "same-id",
-      MessageSidFull: "same-id",
+      MessageSid: "   ",
+      MessageSidFull: "full-provider-message-id",
     } as TemplateContext);
 
     const conversationInfo = parseConversationInfoPayload(text);
-    expect(conversationInfo["message_id"]).toBe("same-id");
+    expect(conversationInfo["message_id"]).toBe("full-provider-message-id");
     expect(conversationInfo["message_id_full"]).toBeUndefined();
   });
 
