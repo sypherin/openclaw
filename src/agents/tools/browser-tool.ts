@@ -796,7 +796,7 @@ export function createBrowserTool(opts?: {
             return jsonResult(result);
           } catch (err) {
             const msg = String(err);
-            if (msg.includes("404:") && msg.includes("tab not found") && profile === "chrome") {
+            if (msg.includes("tab not found")) {
               const tabs = proxyRequest
                 ? ((
                     (await proxyRequest({
@@ -806,14 +806,27 @@ export function createBrowserTool(opts?: {
                     })) as { tabs?: unknown[] }
                   ).tabs ?? [])
                 : await browserTabs(baseUrl, { profile }).catch(() => []);
+              if (profile === "chrome") {
+                if (!tabs.length) {
+                  throw new Error(
+                    "No Chrome tabs are attached via the OpenClaw Browser Relay extension. Click the toolbar icon on the tab you want to control (badge ON), then retry.",
+                    { cause: err },
+                  );
+                }
+                throw new Error(
+                  `Chrome tab not found (stale targetId?). Run action=tabs profile="chrome" and use one of the returned targetIds.`,
+                  { cause: err },
+                );
+              }
+              // Non-chrome profiles (e.g. openclaw): tab disappeared after gateway restart or was closed.
               if (!tabs.length) {
                 throw new Error(
-                  "No Chrome tabs are attached via the OpenClaw Browser Relay extension. Click the toolbar icon on the tab you want to control (badge ON), then retry.",
+                  `Browser tab not found and no open tabs. Use action="navigate" with a targetUrl to open a new tab first.`,
                   { cause: err },
                 );
               }
               throw new Error(
-                `Chrome tab not found (stale targetId?). Run action=tabs profile="chrome" and use one of the returned targetIds.`,
+                `Browser tab not found (stale targetId?). Use action="tabs" to list current tabs and pick a valid targetId, or action="navigate" to open a new tab.`,
                 { cause: err },
               );
             }
