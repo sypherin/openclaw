@@ -45,6 +45,7 @@ vi.mock("./zai-endpoint-detect.js", () => ({
 
 type StoredAuthProfile = {
   key?: string;
+  keyRef?: { source: string; id: string };
   access?: string;
   refresh?: string;
   provider?: string;
@@ -700,7 +701,10 @@ describe("applyAuthChoice", () => {
     });
     expect(result.config.agents?.defaults?.model?.primary).toMatch(/^synthetic\/.+/);
 
-    expect((await readAuthProfile("synthetic:default"))?.key).toBe("sk-synthetic-env");
+    expect((await readAuthProfile("synthetic:default"))?.keyRef).toEqual({
+      source: "env",
+      id: "SYNTHETIC_API_KEY",
+    });
   });
 
   it("does not override the global default model when selecting xai-api-key without setDefaultModel", async () => {
@@ -862,7 +866,10 @@ describe("applyAuthChoice", () => {
     });
     expect(result.config.agents?.defaults?.model?.primary).toBe("openrouter/auto");
 
-    expect((await readAuthProfile("openrouter:default"))?.key).toBe("sk-openrouter-test");
+    expect((await readAuthProfile("openrouter:default"))?.keyRef).toEqual({
+      source: "env",
+      id: "OPENROUTER_API_KEY",
+    });
 
     delete process.env.OPENROUTER_API_KEY;
   });
@@ -925,7 +932,10 @@ describe("applyAuthChoice", () => {
 
     expect(await readAuthProfile("litellm:default")).toMatchObject({
       type: "api_key",
-      key: "sk-litellm-test",
+      keyRef: {
+        source: "env",
+        id: "LITELLM_API_KEY",
+      },
     });
   });
 
@@ -959,7 +969,10 @@ describe("applyAuthChoice", () => {
       "vercel-ai-gateway/anthropic/claude-opus-4.6",
     );
 
-    expect((await readAuthProfile("vercel-ai-gateway:default"))?.key).toBe("gateway-test-key");
+    expect((await readAuthProfile("vercel-ai-gateway:default"))?.keyRef).toEqual({
+      source: "env",
+      id: "AI_GATEWAY_API_KEY",
+    });
 
     delete process.env.AI_GATEWAY_API_KEY;
   });
@@ -997,9 +1010,10 @@ describe("applyAuthChoice", () => {
       "cloudflare-ai-gateway/claude-sonnet-4-5",
     );
 
-    expect((await readAuthProfile("cloudflare-ai-gateway:default"))?.key).toBe(
-      "cf-gateway-test-key",
-    );
+    expect((await readAuthProfile("cloudflare-ai-gateway:default"))?.keyRef).toEqual({
+      source: "env",
+      id: "CLOUDFLARE_AI_GATEWAY_API_KEY",
+    });
     expect((await readAuthProfile("cloudflare-ai-gateway:default"))?.metadata).toEqual({
       accountId: "cf-account-id",
       gatewayId: "cf-gateway-id",
