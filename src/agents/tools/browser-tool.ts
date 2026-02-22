@@ -243,7 +243,34 @@ export function createBrowserTool(opts?: {
     parameters: BrowserToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
-      const action = readStringParam(params, "action", { required: true });
+      let action = readStringParam(params, "action", { required: true });
+
+      // Sanitize corrupted tool arguments: some models concatenate XML-like tags
+      // into the action string (e.g. "snapshot<arg_key>compact</arg_key><arg_value>true").
+      // Extract the real action name and recover the embedded parameters.
+      if (action && /<arg_key>/.test(action)) {
+        const cleanAction = action.replace(/<arg_key>.*$/, "").trim();
+        const tagPairs = [
+          ...action.matchAll(/<arg_key>(.*?)<\/arg_key><arg_value>(.*?)(?:<\/arg_value>|$)/g),
+        ];
+        for (const [, key, value] of tagPairs) {
+          if (key && !(key in params)) {
+            const trimmedVal = value?.trim() ?? "";
+            // Coerce booleans and numbers
+            if (trimmedVal === "true") {
+              params[key] = true;
+            } else if (trimmedVal === "false") {
+              params[key] = false;
+            } else if (/^\d+$/.test(trimmedVal)) {
+              params[key] = Number(trimmedVal);
+            } else {
+              params[key] = trimmedVal;
+            }
+          }
+        }
+        action = cleanAction || action;
+      }
+
       const profile = readStringParam(params, "profile");
       const requestedNode = readStringParam(params, "node");
       let target = readStringParam(params, "target") as "sandbox" | "host" | "node" | undefined;
