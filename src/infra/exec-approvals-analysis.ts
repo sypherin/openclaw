@@ -97,13 +97,22 @@ export function resolveCommandResolution(
   return { rawExecutable, resolvedPath, executableName };
 }
 
+// Matches shell inline env var assignments like `VAR=value` or `VAR=` (empty value).
+const ENV_VAR_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
 export function resolveCommandResolutionFromArgv(
   argv: string[],
   cwd?: string,
   env?: NodeJS.ProcessEnv,
 ): CommandResolution | null {
   const effectiveArgv = unwrapDispatchWrappersForResolution(argv);
-  const rawExecutable = effectiveArgv[0]?.trim();
+  // Skip leading inline env var assignments (e.g. `CLAUDECODE= claude -p ...`).
+  // In bash, `KEY=value command args` sets KEY only for the command's lifetime.
+  let startIdx = 0;
+  while (startIdx < effectiveArgv.length && ENV_VAR_PREFIX_RE.test(effectiveArgv[startIdx])) {
+    startIdx += 1;
+  }
+  const rawExecutable = effectiveArgv[startIdx]?.trim();
   if (!rawExecutable) {
     return null;
   }
