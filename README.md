@@ -35,7 +35,8 @@ This fork ([sypherin/openclaw](https://github.com/sypherin/openclaw)) extends up
 
 Added compatibility for NVIDIA NIM models that upstream doesn't natively support:
 
-- **GLM-5 / GLM-4.7** (THUDM) — empty tool call filter strips garbage `tool_calls` arrays; assistant content forced to plain string to prevent JSON mimicking
+- **Qwen3.5-397B-A17B** — primary model via NVIDIA NIM with content-aware routing (tool_heavy/reasoning/code tasks)
+- **GLM-5 / GLM-4.7** (THUDM) — empty tool call filter strips garbage `tool_calls` arrays; assistant content forced to plain string to prevent JSON mimicking; now used as fallback for simple tasks
 - **Kimi K2.5** (Moonshot) — reasoning-to-text fallback promotes thinking blocks when no text content is returned
 - **DeepSeek V3.2** — added to model registry via NVIDIA NIM
 - **QwQ-32B**, **Qwen3-Coder-Next** — local model support via llama.cpp and Lemonade
@@ -81,8 +82,11 @@ Key changes:
 
 - **LLM rate limit circuit breaker** — replaced retry loop with circuit breaker pattern + failover notifications
 - **`<think>` tag leakage** — prevented thinking block content from leaking into streamed output
+- **Thinking text leak filter** (`normalize-reply.ts`) — strips leaked chain-of-thought from outbound messages before channel delivery. Catches XML-wrapped thinking blocks (`<think>`, `<thinking>`, `<reasoning>`, etc.) and leading meta-commentary patterns that weaker models (e.g. GLM 4.7) sometimes dump into the text field instead of keeping in the `thinking` content block.
+- **Browser tab-not-found error fix** (`client-fetch.ts`, `browser-tool.ts`) — replaced misleading "Can't reach browser control service. Restart gateway." error with actionable recovery instructions when a browser tab reference becomes stale. Extended tab-not-found handler to all browser profiles (not just chrome).
+- **Browser argument sanitization** (`browser-tool.ts`) — detects and recovers from XML-in-JSON argument corruption where weaker models emit `action: "snapshot<arg_key>compact</arg_key><arg_value>true"`. Regex-based sanitizer extracts the real action name and embedded parameters.
 - **Android cleartext config** — fixed cleartext traffic configuration for Android gateway
-- **Merge conflict resolution** — clean merges maintained across 8 upstream syncs (Jan 30 — Feb 21)
+- **Merge conflict resolution** — clean merges maintained across 9 upstream syncs (Jan 30 — Feb 22)
 - **Slug generator model fix** — `llm-slug-generator` hook now reads the primary model from config (`agents.defaults.model.primary`) instead of falling back to hardcoded `anthropic/claude-opus-4-6`, which caused 401 errors when no Anthropic key is configured
 
 ### Smart Model Routing & Context Optimization
@@ -117,7 +121,7 @@ Key changes:
 
 ### Upstream Sync
 
-This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-18** (cherry-picked 43 commits: security, Sonnet 4.6, subagent fixes, skills routing).
+This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-22** (full merge of 734 commits: telegram retry/offset fix, security audit hardening, exec sandbox fail-closed, channel fallback fix, session path resolution, test perf improvements).
 
 ```bash
 # To sync with upstream
