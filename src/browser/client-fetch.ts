@@ -106,6 +106,20 @@ function enhanceBrowserFetchError(url: string, err: unknown, timeoutMs: number):
     "Use an alternative approach or inform the user that the browser is currently unavailable.";
   const msg = String(err);
   const msgLower = msg.toLowerCase();
+
+  // Tab-not-found is NOT a connectivity issue — the browser service is running fine,
+  // but the referenced tab no longer exists (e.g. after a gateway restart).
+  // Give the agent actionable recovery instructions instead of "restart gateway".
+  if (msgLower.includes("tab not found")) {
+    return new Error(
+      `Browser tab not found (the previously referenced tab no longer exists). ` +
+        `This is NOT a gateway connectivity issue — the browser service is running. ` +
+        `To recover: use action="navigate" with a targetUrl to open a new tab, ` +
+        `or use action="tabs" to list available tabs. Do NOT restart the gateway.` +
+        ` (${msg})`,
+    );
+  }
+
   const looksLikeTimeout =
     msgLower.includes("timed out") ||
     msgLower.includes("timeout") ||
