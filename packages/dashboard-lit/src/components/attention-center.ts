@@ -10,6 +10,7 @@ export class AttentionCenter extends LitElement {
   }
 
   @property({ type: Array }) items: AttentionItem[] = [];
+  @property({ type: Boolean }) redacted = false;
 
   override render() {
     return html`
@@ -47,8 +48,8 @@ export class AttentionCenter extends LitElement {
         </span>
         <div style="flex:1;min-width:0;">
           <div style="font-size:0.82rem;font-weight:600;color:var(--text);">${item.title}</div>
-          <div class="muted" style="font-size:0.72rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
-            ${item.description}
+          <div class="muted ${this.redacted ? "privacy-blur" : ""}" style="font-size:0.72rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+            ${this.redacted ? "••••••" : item.description}
           </div>
         </div>
         ${

@@ -1026,7 +1026,7 @@
 }
 
 .chip {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   border-radius: var(--radius-full);
@@ -1085,7 +1085,7 @@
 }
 
 .table-head {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--muted);
   padding: 0 12px;
@@ -1093,7 +1093,7 @@
 
 .table-row {
   border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
-  padding: 11px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--card) 97%, transparent);
   transition:
@@ -1158,9 +1158,9 @@
   grid-template-columns: 90px 70px minmax(140px, 200px) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-  font-size: 12px;
+  font-size: 13px;
   transition: background var(--duration-fast) ease;
 }
 
@@ -1672,7 +1672,7 @@
 }
 
 .chat-stamp {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -1802,7 +1802,7 @@
 }
 
 .exec-approval-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -2296,8 +2296,8 @@
 
 .ov-stat-card__icon {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   color: var(--muted);
 }
 
@@ -2311,7 +2311,7 @@
 }
 
 .ov-stat-card__body .stat-label {
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
@@ -2319,14 +2319,14 @@
 }
 
 .ov-stat-card__body .stat-value {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
 .ov-stat-card__body .muted {
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 4px;
 }
 

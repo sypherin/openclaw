@@ -83,7 +83,9 @@
   gap: 16px;
   padding: 0 20px;
   height: var(--shell-topbar-height);
+  background: var(--chrome);
   backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
 }
 
 .topbar-left {
@@ -142,6 +144,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
+  background: var(--panel-strong);
   transition:
     width var(--shell-focus-duration) var(--shell-focus-ease),
     padding var(--shell-focus-duration) var(--shell-focus-ease),

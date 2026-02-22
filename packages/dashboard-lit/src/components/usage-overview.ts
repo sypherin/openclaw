@@ -1,6 +1,7 @@
 import { LitElement, html, nothing, svg } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { formatCost, formatTokens, formatDurationHuman } from "../lib/format.js";
+import { redactCost, redactNumber } from "../lib/redact.js";
 import type {
   SessionsUsageResult,
   SessionUsageEntry,
@@ -71,7 +72,7 @@ export class UsageOverview extends LitElement {
   }
 
   private renderCsvExport() {
-    if (!this.usage?.sessions.length) {
+    if (!this.usage?.sessions.length || this.redacted) {
       return nothing;
     }
     return html`
@@ -124,19 +125,19 @@ export class UsageOverview extends LitElement {
         <stat-card
           .hero=${true}
           .label=${"Total Expenses"}
-          .value=${this.redacted ? "$•.••" : formatCost(t.totalCost)}
-          .subtitle=${this.redacted ? "•••" : `${this.days} days · ${sessionCount} sessions`}
+          .value=${this.redacted ? redactCost() : formatCost(t.totalCost)}
+          .subtitle=${this.redacted ? redactNumber() : `${this.days} days · ${sessionCount} sessions`}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Messages"}
-          .value=${this.redacted ? "•••" : String(agg.messages.total)}
+          .value=${this.redacted ? redactNumber() : String(agg.messages.total)}
           .subtitle=${`${sessionCount} sessions`}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Total Tokens"}
-          .value=${this.redacted ? "•••" : formatTokens(t.totalTokens)}
+          .value=${this.redacted ? redactNumber() : formatTokens(t.totalTokens)}
           .subtitle=${`${formatTokens(t.input)} in · ${((t.output / (t.totalTokens || 1)) * 100).toFixed(0)}% out`}
           .redacted=${this.redacted}
         ></stat-card>
@@ -146,13 +147,13 @@ export class UsageOverview extends LitElement {
       <div class="stat-card-grid stat-card-grid--cache" style="margin-top:0.5rem;">
         <stat-card
           .label=${"Cache Read"}
-          .value=${this.redacted ? "•••" : formatTokens(t.cacheRead)}
+          .value=${this.redacted ? redactNumber() : formatTokens(t.cacheRead)}
           .subtitle=${formatCost(t.cacheReadCost)}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Cache Write"}
-          .value=${this.redacted ? "•••" : formatTokens(t.cacheWrite)}
+          .value=${this.redacted ? redactNumber() : formatTokens(t.cacheWrite)}
           .subtitle=${formatCost(t.cacheWriteCost)}
           .redacted=${this.redacted}
         ></stat-card>
@@ -162,25 +163,25 @@ export class UsageOverview extends LitElement {
       <div class="stat-card-grid" style="margin-top:0.5rem;">
         <stat-card
           .label=${"Cache Hit"}
-          .value=${this.redacted ? "•••" : `${(cacheHitRate * 100).toFixed(1)}%`}
+          .value=${this.redacted ? redactNumber() : `${(cacheHitRate * 100).toFixed(1)}%`}
           .subtitle=${`${formatTokens(t.cacheRead + t.cacheWrite)} of ${formatTokens(t.totalTokens)}`}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Tool Calls"}
-          .value=${this.redacted ? "•••" : String(agg.tools.totalCalls)}
+          .value=${this.redacted ? redactNumber() : String(agg.tools.totalCalls)}
           .subtitle=${`${agg.tools.uniqueTools} unique`}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Avg Latency"}
-          .value=${this.redacted ? "•••" : latencyStr}
+          .value=${this.redacted ? redactNumber() : latencyStr}
           .subtitle=${agg.latency?.p95Ms ? `p95 ${formatDurationHuman(agg.latency.p95Ms)}` : ""}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Cost/Msg"}
-          .value=${this.redacted ? "•••" : formatCost(avgCost)}
+          .value=${this.redacted ? redactNumber() : formatCost(avgCost)}
           .subtitle=${`across ${agg.messages.total} messages`}
           .redacted=${this.redacted}
         ></stat-card>
@@ -190,13 +191,13 @@ export class UsageOverview extends LitElement {
       <div class="stat-card-grid stat-card-grid--tertiary" style="margin-top:0.5rem;margin-bottom:0.75rem;">
         <stat-card
           .label=${"Tok/Msg"}
-          .value=${this.redacted ? "•••" : formatTokens(tokPerMsg)}
+          .value=${this.redacted ? redactNumber() : formatTokens(tokPerMsg)}
           .subtitle=${"avg per message"}
           .redacted=${this.redacted}
         ></stat-card>
         <stat-card
           .label=${"Cost/Session"}
-          .value=${this.redacted ? "•••" : formatCost(costPerSession)}
+          .value=${this.redacted ? redactNumber() : formatCost(costPerSession)}
           .subtitle=${`across ${sessionCount} sessions`}
           .redacted=${this.redacted}
         ></stat-card>
@@ -288,7 +289,7 @@ export class UsageOverview extends LitElement {
           ${this.renderXAxis(pts, PAD, H)}
         </svg>
         ${
-          this.hoveredPoint != null && pts[this.hoveredPoint]
+          !this.redacted && this.hoveredPoint != null && pts[this.hoveredPoint]
             ? this.renderChartTooltip(pts[this.hoveredPoint])
             : nothing
         }
@@ -398,8 +399,8 @@ export class UsageOverview extends LitElement {
         <span class="usage-section-stat">
           ${icon("zap", { className: "icon-xs" })}
           Cost Breakdown
-          <span class="muted" style="font-size:0.68rem;">
-            Cache Write ${formatTokens(t.cacheWrite)}
+          <span class="muted ${this.redacted ? "privacy-blur" : ""}" style="font-size:0.68rem;">
+            Cache Write ${this.redacted ? redactNumber() : formatTokens(t.cacheWrite)}
           </span>
         </span>
         <span class="usage-section-stat">
@@ -416,15 +417,15 @@ export class UsageOverview extends LitElement {
           ${icon("zap", { className: "icon-xs" })}
           Tools
           <span class="count-badge">${this.usage?.aggregates.tools.totalCalls ?? 0} calls</span>
-          <span class="muted" style="font-size:0.68rem;">
-            exec ${this.usage?.aggregates.tools.totalCalls ?? 0} · read ${this.usage?.aggregates.tools.uniqueTools ?? 0}
+          <span class="muted ${this.redacted ? "privacy-blur" : ""}" style="font-size:0.68rem;">
+            exec ${this.redacted ? redactNumber() : (this.usage?.aggregates.tools.totalCalls ?? 0)} · read ${this.redacted ? redactNumber() : (this.usage?.aggregates.tools.uniqueTools ?? 0)}
           </span>
         </span>
         <span class="usage-section-stat" style="margin-left:auto;">
           ${icon("bot", { className: "icon-xs" })}
           By Agent
-          <span class="muted" style="font-size:0.68rem; margin-left:auto;">
-            est. ${formatCost(t.totalCost)}
+          <span class="muted ${this.redacted ? "privacy-blur" : ""}" style="font-size:0.68rem; margin-left:auto;">
+            est. ${this.redacted ? redactCost() : formatCost(t.totalCost)}
           </span>
         </span>
       </div>
