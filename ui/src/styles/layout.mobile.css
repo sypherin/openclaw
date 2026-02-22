@@ -80,7 +80,8 @@
     font-size: 14px;
   }
 
-  .topbar-breadcrumb__label {
+  .dashboard-header__breadcrumb-link,
+  .dashboard-header__breadcrumb-sep {
     display: none;
   }
 

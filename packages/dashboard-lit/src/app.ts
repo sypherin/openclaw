@@ -92,7 +92,7 @@ export class DashboardApp extends LitElement {
   @state() tab: Tab = "overview";
   @state() basePath = "";
   @state() theme: ThemeMode = "dark";
-  @state() navCollapsed = false;
+  @state() navCollapsed = true;
   @state() private isMobile = false;
   /** Button order — only updates when the toggle collapses, so the active
    *  button doesn't jump while the picker is still open. */
@@ -112,7 +112,8 @@ export class DashboardApp extends LitElement {
     this.basePath = resolveBasePath();
     this.syncTabFromUrl();
     this.initTheme();
-    this.navCollapsed = localStorage.getItem(NAV_COLLAPSED_KEY) === "true";
+    const navStored = localStorage.getItem(NAV_COLLAPSED_KEY);
+    this.navCollapsed = navStored === null ? true : navStored === "true";
     this.isMobile = window.innerWidth < 768;
     window.addEventListener("popstate", this.handlePopState);
     window.addEventListener("resize", this.handleResize);

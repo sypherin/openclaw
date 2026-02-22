@@ -52,14 +52,9 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
-import {
-  iconForTab,
-  normalizeBasePath,
-  TAB_GROUPS,
-  subtitleForTab,
-  titleForTab,
-} from "./navigation.ts";
+import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
 import { renderAgents } from "./views/agents.ts";
 import { renderBottomTabs } from "./views/bottom-tabs.ts";
 import { renderChannels } from "./views/channels.ts";
@@ -148,12 +143,7 @@ export function renderApp(state: AppViewState) {
     })}
     <div class="shell ${isChat ? "shell--chat" : ""} ${chatFocus ? "shell--chat-focus" : ""} ${state.settings.navCollapsed ? "shell--nav-collapsed" : ""} ${state.onboarding ? "shell--onboarding" : ""}">
       <header class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-breadcrumb">
-            <span class="topbar-breadcrumb__icon">${icons[iconForTab(state.tab)]}</span>
-            <span class="topbar-breadcrumb__label">${titleForTab(state.tab)}</span>
-          </span>
-        </div>
+        <dashboard-header .tab=${state.tab}></dashboard-header>
         <button
           class="topbar-search"
           @click=${() => {
@@ -162,7 +152,6 @@ export function renderApp(state: AppViewState) {
           title="Search or jump to… (⌘K)"
           aria-label="Open command palette"
         >
-          ${icons.search}
           <span class="topbar-search__label">${t("common.search")}</span>
           <kbd class="topbar-search__kbd">⌘K</kbd>
         </button>
