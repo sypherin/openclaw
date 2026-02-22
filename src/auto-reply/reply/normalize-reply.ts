@@ -34,6 +34,42 @@ export function stripThinkingTextLeaks(text: string): string {
   return cleaned || text; // fallback to original if everything was stripped
 }
 
+/**
+ * Fixes "flattened" markdown where the model outputs bold headings, bullet
+ * points, and numbered lists on a single line with no line breaks.
+ *
+ * Example input:
+ *   "recap: **today:** - item one - item two **yesterday:** - item three"
+ * Output:
+ *   "recap:\n\n**today:**\n- item one\n- item two\n\n**yesterday:**\n- item three"
+ *
+ * Only triggers when the text has very few newlines relative to its bullet/heading density,
+ * to avoid breaking already-formatted text.
+ */
+export function fixFlattenedMarkdown(text: string): string {
+  if (!text || text.length < 60) {
+    return text;
+  }
+  const existingNewlines = (text.match(/\n/g) || []).length;
+  const bulletCount = (text.match(/ - \*\*|^\d+\. /gm) || []).length;
+  // Only fix if the text is clearly flattened: many bullets but very few newlines
+  if (existingNewlines > bulletCount * 0.5 || bulletCount < 2) {
+    return text;
+  }
+
+  let fixed = text;
+  // Insert newline before bold section headers: " **heading:** - " → "\n\n**heading:**\n- "
+  fixed = fixed.replace(/ (\*\*[^*]+:\*\*) /g, "\n\n$1\n");
+  // Insert newline before inline bullet points: " - **item**" → "\n- **item**"
+  fixed = fixed.replace(/ - (\*\*)/g, "\n- $1");
+  // Insert newline before inline bullet points: " - item" (non-bold, but after a newline context)
+  fixed = fixed.replace(/ - ([A-Z])/g, "\n- $1");
+  // Insert newline before numbered list items: " 1. " → "\n1. "
+  fixed = fixed.replace(/ (\d+)\. /g, "\n$1. ");
+
+  return fixed.trim();
+}
+
 export type NormalizeReplySkipReason = "empty" | "silent" | "heartbeat";
 
 export type NormalizeReplyOptions = {
@@ -90,6 +126,7 @@ export function normalizeReplyPayload(
   if (text) {
     text = sanitizeUserFacingText(text, { errorContext: Boolean(payload.isError) });
     text = stripThinkingTextLeaks(text);
+    text = fixFlattenedMarkdown(text);
   }
   if (!text?.trim() && !hasMedia && !hasChannelData) {
     opts.onSkip?.("empty");
