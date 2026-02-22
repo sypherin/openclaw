@@ -83,17 +83,34 @@ export async function processGatewayAllowlist(
   );
   const requiresHeredocApproval =
     hostSecurity === "allowlist" && analysisOk && allowlistSatisfied && hasHeredocSegment;
+  // Check blocklist: force approval for dangerous binaries even under security "full".
+  const blocklist = approvals.blocklist;
+  let blocklistHit = false;
+  if (blocklist.length > 0 && allowlistEval.segments.length > 0) {
+    for (const seg of allowlistEval.segments) {
+      const name = seg.resolution?.executableName ?? seg.argv[0]?.trim();
+      if (name && blocklist.some((p) => p === name || p === seg.resolution?.resolvedPath)) {
+        blocklistHit = true;
+        break;
+      }
+    }
+  }
   const requiresAsk =
     requiresExecApproval({
       ask: hostAsk,
       security: hostSecurity,
       analysisOk,
       allowlistSatisfied,
-    }) || requiresHeredocApproval;
+    }) ||
+    requiresHeredocApproval ||
+    blocklistHit;
   if (requiresHeredocApproval) {
     params.warnings.push(
       "Warning: heredoc execution requires explicit approval in allowlist mode.",
     );
+  }
+  if (blocklistHit) {
+    params.warnings.push("Warning: command matched exec blocklist — requires explicit approval.");
   }
 
   if (requiresAsk) {

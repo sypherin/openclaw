@@ -249,12 +249,26 @@ export async function handleSystemRunInvoke(opts: {
     return;
   }
 
-  const requiresAsk = requiresExecApproval({
-    ask,
-    security,
-    analysisOk,
-    allowlistSatisfied,
-  });
+  // Check blocklist: force approval for dangerous binaries even under security "full".
+  const blocklist = approvals.blocklist;
+  let blocklistHit = false;
+  if (blocklist.length > 0 && segments.length > 0) {
+    for (const seg of segments) {
+      const name = seg.resolution?.executableName ?? seg.argv[0]?.trim();
+      if (name && blocklist.some((p) => p === name || p === seg.resolution?.resolvedPath)) {
+        blocklistHit = true;
+        break;
+      }
+    }
+  }
+
+  const requiresAsk =
+    requiresExecApproval({
+      ask,
+      security,
+      analysisOk,
+      allowlistSatisfied,
+    }) || blocklistHit;
 
   const approvalDecision =
     opts.params.approvalDecision === "allow-once" || opts.params.approvalDecision === "allow-always"
