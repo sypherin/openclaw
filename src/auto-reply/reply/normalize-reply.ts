@@ -1,12 +1,38 @@
-import type { ReplyPayload } from "../types.js";
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
 import { HEARTBEAT_TOKEN, isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
+import type { ReplyPayload } from "../types.js";
 import { hasLineDirectives, parseLineDirectives } from "./line-directives.js";
 import {
   resolveResponsePrefixTemplate,
   type ResponsePrefixContext,
 } from "./response-prefix-template.js";
+
+/**
+ * Strips leaked chain-of-thought / reasoning text that some models (e.g. GLM 4.7)
+ * accidentally include in the assistant text instead of keeping it in a separate
+ * `thinking` content block.
+ *
+ * Handles:
+ *  - XML-wrapped blocks: <think>…</think>, <thinking>…</thinking>, <reasoning>…</reasoning>
+ *  - Inline thinking prefixes like "Let me think about this..." that precede the real answer.
+ */
+const THINKING_BLOCK_RE =
+  /<(?:think|thinking|reasoning|internal_thoughts|chain_of_thought|reflection)>[\s\S]*?<\/(?:think|thinking|reasoning|internal_thoughts|chain_of_thought|reflection)>/gi;
+
+const THINKING_PREFIX_RE =
+  /^(?:(?:The )?user (?:is asking|wants|asked|said|has asked|is requesting|seems to|appears to)\b.*?\n+)+/i;
+
+export function stripThinkingTextLeaks(text: string): string {
+  if (!text) {
+    return text;
+  }
+  // Strip XML-wrapped thinking blocks
+  let cleaned = text.replace(THINKING_BLOCK_RE, "").trim();
+  // Strip leading meta-commentary about the user's intent
+  cleaned = cleaned.replace(THINKING_PREFIX_RE, "").trim();
+  return cleaned || text; // fallback to original if everything was stripped
+}
 
 export type NormalizeReplySkipReason = "empty" | "silent" | "heartbeat";
 
@@ -63,6 +89,7 @@ export function normalizeReplyPayload(
 
   if (text) {
     text = sanitizeUserFacingText(text, { errorContext: Boolean(payload.isError) });
+    text = stripThinkingTextLeaks(text);
   }
   if (!text?.trim() && !hasMedia && !hasChannelData) {
     opts.onSkip?.("empty");
