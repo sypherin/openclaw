@@ -2,13 +2,13 @@ import type { Chat, Message, MessageOrigin, User } from "@grammyjs/types";
 import { formatLocationText, type NormalizedLocation } from "../../channels/location.js";
 import { resolveTelegramPreviewStreamMode } from "../../config/discord-preview-streaming.js";
 import type { TelegramGroupConfig, TelegramTopicConfig } from "../../config/types.js";
-import type { TelegramStreamMode } from "./types.js";
 import { readChannelAllowFromStore } from "../../pairing/pairing-store.js";
 import {
   firstDefined,
   normalizeAllowFromWithStore,
   type NormalizedAllowFrom,
 } from "../bot-access.js";
+import type { TelegramStreamMode } from "./types.js";
 
 const TELEGRAM_GENERAL_TOPIC_ID = 1;
 
@@ -321,6 +321,8 @@ export type TelegramReplyTarget = {
   sender: string;
   body: string;
   kind: "reply" | "quote";
+  /** Forward context if the reply target was itself a forwarded message (issue #9619). */
+  forwardedFrom?: TelegramForwardedContext;
 };
 
 export function describeReplyTarget(msg: Message): TelegramReplyTarget | null {
@@ -359,11 +361,17 @@ export function describeReplyTarget(msg: Message): TelegramReplyTarget | null {
   const sender = replyLike ? buildSenderName(replyLike) : undefined;
   const senderLabel = sender ?? "unknown sender";
 
+  // Extract forward context from the resolved reply target (reply_to_message or external_reply).
+  const forwardedFrom = replyLike?.forward_origin
+    ? (resolveForwardOrigin(replyLike.forward_origin) ?? undefined)
+    : undefined;
+
   return {
     id: replyLike?.message_id ? String(replyLike.message_id) : undefined,
     sender: senderLabel,
     body,
     kind,
+    forwardedFrom,
   };
 }
 

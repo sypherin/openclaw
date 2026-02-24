@@ -12,7 +12,7 @@ import { clearPluginCommands } from "./commands.js";
 import {
   applyTestPluginDefaults,
   normalizePluginsConfig,
-  resolveEnableState,
+  resolveEffectiveEnableState,
   resolveMemorySlotDecision,
   type NormalizedPluginsConfig,
 } from "./config-state.js";
@@ -172,6 +172,31 @@ function createPluginRecord(params: {
     configUiHints: undefined,
     configJsonSchema: undefined,
   };
+}
+
+function recordPluginError(params: {
+  logger: PluginLogger;
+  registry: PluginRegistry;
+  record: PluginRecord;
+  seenIds: Map<string, PluginRecord["origin"]>;
+  pluginId: string;
+  origin: PluginRecord["origin"];
+  error: unknown;
+  logPrefix: string;
+  diagnosticMessagePrefix: string;
+}) {
+  const errorText = redactSensitiveText(String(params.error));
+  params.logger.error(`${params.logPrefix}${errorText}`);
+  params.record.status = "error";
+  params.record.error = errorText;
+  params.registry.plugins.push(params.record);
+  params.seenIds.set(params.pluginId, params.origin);
+  params.registry.diagnostics.push({
+    level: "error",
+    pluginId: params.record.id,
+    source: params.record.source,
+    message: `${params.diagnosticMessagePrefix}${errorText}`,
+  });
 }
 
 function pushDiagnostics(diagnostics: PluginDiagnostic[], append: PluginDiagnostic[]) {
@@ -446,7 +471,12 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       continue;
     }
 
-    const enableState = resolveEnableState(pluginId, candidate.origin, normalized);
+    const enableState = resolveEffectiveEnableState({
+      id: pluginId,
+      origin: candidate.origin,
+      config: normalized,
+      rootConfig: cfg,
+    });
     const entry = normalized.entries[pluginId];
     const record = createPluginRecord({
       id: pluginId,
@@ -507,17 +537,16 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     try {
       mod = getJiti()(candidate.source) as OpenClawPluginModule;
     } catch (err) {
-      const safeErr = redactSensitiveText(String(err));
-      logger.error(`[plugins] ${record.id} failed to load from ${record.source}: ${safeErr}`);
-      record.status = "error";
-      record.error = safeErr;
-      registry.plugins.push(record);
-      seenIds.set(pluginId, candidate.origin);
-      registry.diagnostics.push({
-        level: "error",
-        pluginId: record.id,
-        source: record.source,
-        message: `failed to load plugin: ${safeErr}`,
+      recordPluginError({
+        logger,
+        registry,
+        record,
+        seenIds,
+        pluginId,
+        origin: candidate.origin,
+        error: err,
+        logPrefix: `[plugins] ${record.id} failed to load from ${record.source}: `,
+        diagnosticMessagePrefix: "failed to load plugin: ",
       });
       continue;
     }
@@ -634,19 +663,16 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
     } catch (err) {
-      const safeErr = redactSensitiveText(String(err));
-      logger.error(
-        `[plugins] ${record.id} failed during register from ${record.source}: ${safeErr}`,
-      );
-      record.status = "error";
-      record.error = safeErr;
-      registry.plugins.push(record);
-      seenIds.set(pluginId, candidate.origin);
-      registry.diagnostics.push({
-        level: "error",
-        pluginId: record.id,
-        source: record.source,
-        message: `plugin failed during register: ${safeErr}`,
+      recordPluginError({
+        logger,
+        registry,
+        record,
+        seenIds,
+        pluginId,
+        origin: candidate.origin,
+        error: err,
+        logPrefix: `[plugins] ${record.id} failed during register from ${record.source}: `,
+        diagnosticMessagePrefix: "plugin failed during register: ",
       });
     }
   }

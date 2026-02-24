@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceBootstrapFile } from "./workspace.js";
 import { buildSystemPromptReport } from "./system-prompt-report.js";
+import type { WorkspaceBootstrapFile } from "./workspace.js";
 
 function makeBootstrapFile(overrides: Partial<WorkspaceBootstrapFile>): WorkspaceBootstrapFile {
   return {
@@ -92,5 +92,24 @@ describe("buildSystemPromptReport", () => {
 
     expect(report.injectedWorkspaceFiles[0]?.injectedChars).toBe(0);
     expect(report.injectedWorkspaceFiles[0]?.truncated).toBe(true);
+  });
+
+  it("ignores malformed injected file paths and still matches valid entries", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/policies/AGENTS.md" });
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt: "system",
+      bootstrapFiles: [file],
+      injectedFiles: [
+        { path: 123 as unknown as string, content: "bad" },
+        { path: "/tmp/workspace/policies/AGENTS.md", content: "trimmed" },
+      ],
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.injectedWorkspaceFiles[0]?.injectedChars).toBe("trimmed".length);
   });
 });

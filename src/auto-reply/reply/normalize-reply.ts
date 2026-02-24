@@ -43,29 +43,39 @@ export function stripThinkingTextLeaks(text: string): string {
  * Output:
  *   "recap:\n\n**today:**\n- item one\n- item two\n\n**yesterday:**\n- item three"
  *
- * Only triggers when the text has very few newlines relative to its bullet/heading density,
- * to avoid breaking already-formatted text.
+ * Only triggers when the text has very few newlines relative to its structural
+ * marker density, to avoid breaking already-formatted text.
  */
 export function fixFlattenedMarkdown(text: string): string {
   if (!text || text.length < 60) {
     return text;
   }
   const existingNewlines = (text.match(/\n/g) || []).length;
-  const bulletCount = (text.match(/ - \*\*|^\d+\. /gm) || []).length;
-  // Only fix if the text is clearly flattened: many bullets but very few newlines
-  if (existingNewlines > bulletCount * 0.5 || bulletCount < 2) {
+  // Count all structural markers: bold headers, dash bullets, asterisk bullets, numbered items
+  const boldHeaders = (text.match(/ \*\*[^*]+:\*\*/g) || []).length;
+  const dashBullets = (text.match(/ - (?:\*\*|[A-Z])/g) || []).length;
+  const asteriskBullets = (text.match(/ \* (?:\*\*|[A-Z])/g) || []).length;
+  const numberedItems = (text.match(/ \d+\. (?:\*\*|[A-Z])/g) || []).length;
+  const structureCount = boldHeaders + dashBullets + asteriskBullets + numberedItems;
+  // Only fix if the text is clearly flattened: structural markers but very few newlines
+  if (structureCount < 2 || existingNewlines > structureCount * 0.5) {
     return text;
   }
 
   let fixed = text;
-  // Insert newline before bold section headers: " **heading:** - " → "\n\n**heading:**\n- "
-  fixed = fixed.replace(/ (\*\*[^*]+:\*\*) /g, "\n\n$1\n");
-  // Insert newline before inline bullet points: " - **item**" → "\n- **item**"
-  fixed = fixed.replace(/ - (\*\*)/g, "\n- $1");
-  // Insert newline before inline bullet points: " - item" (non-bold, but after a newline context)
-  fixed = fixed.replace(/ - ([A-Z])/g, "\n- $1");
-  // Insert newline before numbered list items: " 1. " → "\n1. "
-  fixed = fixed.replace(/ (\d+)\. /g, "\n$1. ");
+  // Numbered items with bold: " 1. **Title:**" → "\n1. **Title:**"
+  fixed = fixed.replace(/ (\d+\. \*\*)/g, "\n$1");
+  // Dash bullets: " - **item**" or " - Something" → "\n- ..."
+  fixed = fixed.replace(/ (- (?:\*\*|[A-Z]))/g, "\n$1");
+  // Asterisk bullets: " * **item**" or " * Something" → "\n* ..."
+  fixed = fixed.replace(/ (\* (?:\*\*|[A-Z]))/g, "\n$1");
+  // Standalone bold headers not after bullet/number markers:
+  // " **heading:**" → "\n\n**heading:**"
+  fixed = fixed.replace(/(?<=[^\n\-*\d.]) (\*\*[^*]+:\*\*)/g, "\n\n$1");
+  // Markdown headings: " ## " → "\n\n## "
+  fixed = fixed.replace(/ (#{1,6} )/g, "\n\n$1");
+  // Clean up excessive newlines (3+ → 2)
+  fixed = fixed.replace(/\n{3,}/g, "\n\n");
 
   return fixed.trim();
 }
