@@ -51,33 +51,60 @@ export function fixFlattenedMarkdown(text: string): string {
     return text;
   }
   const existingNewlines = (text.match(/\n/g) || []).length;
-  // Count all structural markers: bold headers, dash bullets, asterisk bullets, numbered items
+  // Count structural markers (broad detection for flattened output)
   const boldHeaders = (text.match(/ \*\*[^*]+:\*\*/g) || []).length;
-  const dashBullets = (text.match(/ - (?:\*\*|[A-Z])/g) || []).length;
+  const dashBullets = (text.match(/ - (?:\*\*|[A-Z0-9])/g) || []).length;
   const asteriskBullets = (text.match(/ \* (?:\*\*|[A-Z])/g) || []).length;
-  const numberedItems = (text.match(/ \d+\. (?:\*\*|[A-Z])/g) || []).length;
-  const structureCount = boldHeaders + dashBullets + asteriskBullets + numberedItems;
-  // Only fix if the text is clearly flattened: structural markers but very few newlines
-  if (structureCount < 2 || existingNewlines > structureCount * 0.5) {
-    return text;
+  const numberedItems = (text.match(/ \d+\. /g) || []).length;
+  const emojiHeaders = (text.match(/ [\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*\*\*/gu) || [])
+    .length;
+  const structureCount = boldHeaders + dashBullets + asteriskBullets + numberedItems + emojiHeaders;
+
+  // Trigger if text has structural markers but very few newlines
+  if (structureCount >= 2 && existingNewlines <= structureCount * 0.5) {
+    let fixed = text;
+    // Numbered items: " 1. text" → "\n1. text"
+    fixed = fixed.replace(/ (\d+\. )/g, "\n$1");
+    // Dash bullets: " - text" → "\n- text" (broad: catches lowercase too)
+    fixed = fixed.replace(/ (- (?:\*\*|[A-Z0-9]))/g, "\n$1");
+    // Asterisk bullets: " * text" → "\n* text"
+    fixed = fixed.replace(/ (\* (?:\*\*|[A-Z]))/g, "\n$1");
+    // Standalone bold headers: " **heading:**" → "\n\n**heading:**"
+    fixed = fixed.replace(/(?<=[^\n\-*\d.]) (\*\*[^*]+:\*\*)/g, "\n\n$1");
+    // Emoji followed by bold (section header): " 📊 **Title**" → "\n\n📊 **Title**"
+    fixed = fixed.replace(/ ([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*\*\*)/gu, "\n\n$1");
+    // Markdown headings: " ## " → "\n\n## "
+    fixed = fixed.replace(/ (#{1,6} )/g, "\n\n$1");
+    // Clean up excessive newlines (3+ → 2)
+    fixed = fixed.replace(/\n{3,}/g, "\n\n");
+    return fixed.trim();
   }
 
-  let fixed = text;
-  // Numbered items with bold: " 1. **Title:**" → "\n1. **Title:**"
-  fixed = fixed.replace(/ (\d+\. \*\*)/g, "\n$1");
-  // Dash bullets: " - **item**" or " - Something" → "\n- ..."
-  fixed = fixed.replace(/ (- (?:\*\*|[A-Z]))/g, "\n$1");
-  // Asterisk bullets: " * **item**" or " * Something" → "\n* ..."
-  fixed = fixed.replace(/ (\* (?:\*\*|[A-Z]))/g, "\n$1");
-  // Standalone bold headers not after bullet/number markers:
-  // " **heading:**" → "\n\n**heading:**"
-  fixed = fixed.replace(/(?<=[^\n\-*\d.]) (\*\*[^*]+:\*\*)/g, "\n\n$1");
-  // Markdown headings: " ## " → "\n\n## "
-  fixed = fixed.replace(/ (#{1,6} )/g, "\n\n$1");
-  // Clean up excessive newlines (3+ → 2)
-  fixed = fixed.replace(/\n{3,}/g, "\n\n");
+  // Fallback: long text (>250 chars) with zero newlines — insert paragraph breaks
+  // between sentences to prevent wall-of-text output.
+  if (existingNewlines === 0 && text.length > 250) {
+    const sentences = text.split(/(?<=\.) (?=[A-Z])/);
+    if (sentences.length >= 4) {
+      // Group ~2-3 sentences per paragraph
+      const paragraphs: string[] = [];
+      let current: string[] = [];
+      for (const sentence of sentences) {
+        current.push(sentence);
+        if (current.join(" ").length > 150) {
+          paragraphs.push(current.join(" "));
+          current = [];
+        }
+      }
+      if (current.length > 0) {
+        paragraphs.push(current.join(" "));
+      }
+      if (paragraphs.length >= 2) {
+        return paragraphs.join("\n\n");
+      }
+    }
+  }
 
-  return fixed.trim();
+  return text;
 }
 
 export type NormalizeReplySkipReason = "empty" | "silent" | "heartbeat";
