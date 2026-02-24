@@ -27,17 +27,11 @@ function parseOrigin(
  * HTTPS origins can access WSS endpoints; HTTP origins can access WS endpoints.
  * Prevents cross-protocol WebSocket hijacking (CSWSH).
  */
-const COMPATIBLE_PROTOCOLS: Record<string, Set<string>> = {
-  "https:": new Set(["https:", "wss:"]),
-  "http:": new Set(["http:", "ws:"]),
-  "wss:": new Set(["https:", "wss:"]),
-  "ws:": new Set(["http:", "ws:"]),
-};
-
 export function checkBrowserOrigin(params: {
   requestHost?: string;
   origin?: string;
   allowedOrigins?: string[];
+  allowHostHeaderOriginFallback?: boolean;
 }): OriginCheckResult {
   const parsedOrigin = parseOrigin(params.origin);
   if (!parsedOrigin) {
@@ -52,17 +46,12 @@ export function checkBrowserOrigin(params: {
   }
 
   const requestHost = normalizeHostHeader(params.requestHost);
-  if (requestHost && parsedOrigin.host === requestHost) {
-    // Also verify protocol compatibility to prevent cross-protocol CSWSH
-    const compatible = COMPATIBLE_PROTOCOLS[parsedOrigin.protocol];
-    if (!compatible || compatible.has(parsedOrigin.protocol)) {
-      return { ok: true };
-    }
-    // Loopback connections are exempt from protocol matching (local dev)
-    if (isLoopbackHost(parsedOrigin.hostname)) {
-      return { ok: true };
-    }
-    return { ok: false, reason: "origin protocol mismatch" };
+  if (
+    params.allowHostHeaderOriginFallback === true &&
+    requestHost &&
+    parsedOrigin.host === requestHost
+  ) {
+    return { ok: true };
   }
 
   const requestHostname = resolveHostName(requestHost);

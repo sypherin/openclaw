@@ -9,7 +9,10 @@ import {
   resolveDefaultAgentId,
   resolveAgentWorkspaceDir,
   resolveAgentDir,
+  resolveAgentModelPrimary,
 } from "../agents/agent-scope.js";
+import { DEFAULT_PROVIDER, DEFAULT_MODEL } from "../agents/defaults.js";
+import { parseModelRef } from "../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -41,17 +44,11 @@ ${params.sessionContent.slice(0, 2000)}
 
 Reply with ONLY the slug, nothing else. Examples: "vendor-pitch", "api-design", "bug-fix"`;
 
-    // Resolve provider/model from agent config primary instead of hardcoded anthropic defaults
-    const primaryRef = params.cfg?.agents?.defaults?.model?.primary;
-    let provider: string | undefined;
-    let model: string | undefined;
-    if (typeof primaryRef === "string" && primaryRef.trim()) {
-      const slash = primaryRef.indexOf("/");
-      if (slash !== -1) {
-        provider = primaryRef.slice(0, slash).trim() || undefined;
-        model = primaryRef.slice(slash + 1).trim() || undefined;
-      }
-    }
+    // Resolve model from agent config instead of using hardcoded defaults
+    const modelRef = resolveAgentModelPrimary(params.cfg, agentId);
+    const parsed = modelRef ? parseModelRef(modelRef, DEFAULT_PROVIDER) : null;
+    const provider = parsed?.provider ?? DEFAULT_PROVIDER;
+    const model = parsed?.model ?? DEFAULT_MODEL;
 
     const result = await runEmbeddedPiAgent({
       sessionId: `slug-generator-${Date.now()}`,
