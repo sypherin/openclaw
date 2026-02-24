@@ -51,30 +51,50 @@ export function fixFlattenedMarkdown(text: string): string {
     return text;
   }
   const existingNewlines = (text.match(/\n/g) || []).length;
-  // Count structural markers (broad detection for flattened output)
-  const boldHeaders = (text.match(/ \*\*[^*]+:\*\*/g) || []).length;
-  const dashBullets = (text.match(/ - (?:\*\*|[A-Z0-9])/g) || []).length;
-  const asteriskBullets = (text.match(/ \* (?:\*\*|[A-Z])/g) || []).length;
-  const numberedItems = (text.match(/ \d+\. /g) || []).length;
-  const emojiHeaders = (text.match(/ [\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*\*\*/gu) || [])
-    .length;
+  // Count structural markers — match at start-of-string OR after a space/punctuation
+  const boldHeaders = (text.match(/(?:^| )\*\*[^*]+(?::\*\*|\*\*:)/gm) || []).length;
+  const dashBullets = (text.match(/(?:^| )- (?:\*\*|[A-Z0-9])/gm) || []).length;
+  const asteriskBullets = (text.match(/(?:^| )\* (?:\*\*|[A-Z])/gm) || []).length;
+  const numberedItems = (text.match(/(?:^| )\d+\. /gm) || []).length;
+  const emojiHeaders = (
+    text.match(/(?:^| )[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*\*\*/gmu) || []
+  ).length;
   const structureCount = boldHeaders + dashBullets + asteriskBullets + numberedItems + emojiHeaders;
 
   // Trigger if text has structural markers but very few newlines
   if (structureCount >= 2 && existingNewlines <= structureCount * 0.5) {
     let fixed = text;
-    // Numbered items: " 1. text" → "\n1. text"
-    fixed = fixed.replace(/ (\d+\. )/g, "\n$1");
-    // Dash bullets: " - text" → "\n- text" (broad: catches lowercase too)
-    fixed = fixed.replace(/ (- (?:\*\*|[A-Z0-9]))/g, "\n$1");
-    // Asterisk bullets: " * text" → "\n* text"
-    fixed = fixed.replace(/ (\* (?:\*\*|[A-Z]))/g, "\n$1");
-    // Standalone bold headers: " **heading:**" → "\n\n**heading:**"
-    fixed = fixed.replace(/(?<=[^\n\-*\d.]) (\*\*[^*]+:\*\*)/g, "\n\n$1");
+    // --- Step 1: compound list items (bullet/number + bold kept as one unit) ---
+    // " - **Heading:** text" → "\n- **Heading:** text"
+    fixed = fixed.replace(/ (- \*\*)/g, "\n$1");
+    // " * **Heading:** text" → "\n* **Heading:** text"
+    fixed = fixed.replace(/ (\* \*\*)/g, "\n$1");
+    // " - Text" (dash bullet, plain uppercase) → "\n- Text"
+    fixed = fixed.replace(/ (- [A-Z0-9])/g, "\n$1");
+    // " * Text" (asterisk bullet, plain uppercase) → "\n* Text"
+    fixed = fixed.replace(/ (\* [A-Z])/g, "\n$1");
+    // " 1. **Bold" or " 1. Text" → "\n1. **Bold" (number + content stays together)
+    fixed = fixed.replace(/ (\d+\.\s)/g, "\n$1");
+
+    // --- Step 2: standalone bold section headers after sentence-ending punctuation ---
+    // "sentence. **Heading:**" → "sentence.\n\n**Heading:**"
+    // Exclude numbered list contexts: "1. **Bold" should NOT get a double newline
+    fixed = fixed.replace(/([.!?)"]) (\*\*[^*]{2,}\*\*)/g, (_match, punct, header, offset) => {
+      // Check if the period is from a numbered list (e.g., "1. ")
+      const before = fixed.slice(Math.max(0, offset - 2), offset);
+      if (/\d$/.test(before)) {
+        return punct + " " + header; // keep as-is
+      }
+      return punct + "\n\n" + header;
+    });
     // Emoji followed by bold (section header): " 📊 **Title**" → "\n\n📊 **Title**"
     fixed = fixed.replace(/ ([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*\*\*)/gu, "\n\n$1");
     // Markdown headings: " ## " → "\n\n## "
     fixed = fixed.replace(/ (#{1,6} )/g, "\n\n$1");
+
+    // --- Step 3: ensure spacing between sections ---
+    // Blank line before numbered items that follow a bold header
+    fixed = fixed.replace(/(\*\*)\n(\d+\.)/g, "$1\n\n$2");
     // Clean up excessive newlines (3+ → 2)
     fixed = fixed.replace(/\n{3,}/g, "\n\n");
     return fixed.trim();
