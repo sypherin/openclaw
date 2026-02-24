@@ -72,6 +72,8 @@ Key changes:
 - **Explicit gateway method scopes** — replaced prefix-based admin scope matching with explicit method-to-scope entries; prefix fallback now emits runtime warnings for unclassified methods
 - **Plugin install code scan enforcement** — critical code pattern findings now block plugin installation (was warn-only); `--force` flag available for explicit override
 - **Slack menu token entropy** — replaced `Math.random()` with `crypto.randomBytes(8)` for external arg menu tokens
+- **Cron tool invoke denial** — cron tool denied on `/tools/invoke` by default to prevent unauthenticated cron scheduling
+- **Trusted-proxy auth fix** — includes `trusted-proxy` in `sharedAuthOk` check for consistent auth gating
 
 ### Hook System Fixes
 
@@ -86,8 +88,17 @@ Key changes:
 - **Browser tab-not-found error fix** (`client-fetch.ts`, `browser-tool.ts`) — replaced misleading "Can't reach browser control service. Restart gateway." error with actionable recovery instructions when a browser tab reference becomes stale. Extended tab-not-found handler to all browser profiles (not just chrome).
 - **Browser argument sanitization** (`browser-tool.ts`) — detects and recovers from XML-in-JSON argument corruption where weaker models emit `action: "snapshot<arg_key>compact</arg_key><arg_value>true"`. Regex-based sanitizer extracts the real action name and embedded parameters.
 - **Android cleartext config** — fixed cleartext traffic configuration for Android gateway
-- **Merge conflict resolution** — clean merges maintained across 9 upstream syncs (Jan 30 — Feb 22)
+- **Merge conflict resolution** — clean merges maintained across 10 upstream syncs (Jan 30 — Feb 24)
 - **Slug generator model fix** — `llm-slug-generator` hook now reads the primary model from config (`agents.defaults.model.primary`) instead of falling back to hardcoded `anthropic/claude-opus-4-6`, which caused 401 errors when no Anthropic key is configured
+- **Discord reasoning tag strip** — strips `<reasoning>`/`<thinking>` tags from partial stream previews in Discord delivery
+- **Matrix reasoning-only filter** — skips reasoning-only messages (no user-visible text) in Matrix reply delivery
+- **Reasoning payload suppression** — suppresses reasoning payloads from the generic channel dispatch path so they don't leak to channels that don't support them
+- **Feishu topic session binding** — passes `parentPeer` for topic session binding inheritance in Feishu channel
+- **TUI disconnect guard** — guards `sendMessage` when TUI is disconnected and resets `readyPromise` on close
+- **fixFlattenedMarkdown broadened** — handles more flattened output patterns from weaker models
+- **OpenRouter 'auto' model fix** — skips reasoning effort injection for OpenRouter's `auto` routing model
+- **Orphaned tool result repair** — repairs orphaned tool results for OpenAI after history truncation
+- **Cron embedded error handling** — treats embedded error payloads as run failures instead of silently succeeding
 
 ### Smart Model Routing & Context Optimization
 
@@ -104,6 +115,7 @@ Key changes:
 ### Subagent Fixes (upstream cherry-picks)
 
 - **24 subagent reliability fixes** — completion delivery, sticky reply threading, read-tool overflow guards, retry backoff, OriginatingTo fallback routing, deterministic announce, correct model display in sessions list
+- **Configurable default `runTimeoutSeconds`** — subagent spawns now respect `agents.defaults.runTimeoutSeconds` config
 
 ### Skills Routing (upstream cherry-picks)
 
@@ -118,10 +130,11 @@ Key changes:
 - **Configurable heartbeat session** — customizable heartbeat interval
 - **Discord `allowBots` config** — option to allow bot messages in Discord channels ([#802](https://github.com/sypherin/openclaw/pull/802))
 - **Docker cache optimization** — dependency layer caching for faster rebuilds ([#605](https://github.com/sypherin/openclaw/pull/605))
+- **Auto-reply multilingual stop triggers** — normalized stop matching with multilingual trigger support (upstream)
 
 ### Upstream Sync
 
-This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-22** (full merge of 734 commits: telegram retry/offset fix, security audit hardening, exec sandbox fail-closed, channel fallback fix, session path resolution, test perf improvements).
+This fork tracks `upstream/main` and merges regularly. Last sync: **2026-02-24** (full merge of 845 commits: auto-reply multilingual stop triggers, `allowFrom` id-only default breaking change, reasoning payload channel suppression, configurable subagent timeout, cron tool invoke denial, prompt caching docs, release 2026.2.23).
 
 ```bash
 # To sync with upstream
