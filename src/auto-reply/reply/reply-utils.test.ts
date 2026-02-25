@@ -113,7 +113,7 @@ describe("normalizeReplyPayload", () => {
 describe("fixFlattenedMarkdown", () => {
   it("reformats flattened bold headers and dash bullets (Qwen cycle summary pattern)", () => {
     const input =
-      '**Cycle Summary:** - **Portfolio:** ETH -1.4% (no alert), stocks flat - **Reddit Crypto:** Browser not running - **Crypto News:** Coinbase launching ETHGas today - **Goals:** All active';
+      "**Cycle Summary:** - **Portfolio:** ETH -1.4% (no alert), stocks flat - **Reddit Crypto:** Browser not running - **Crypto News:** Coinbase launching ETHGas today - **Goals:** All active";
     const result = fixFlattenedMarkdown(input);
     expect(result).toContain("\n- **Portfolio:**");
     expect(result).toContain("\n- **Reddit Crypto:**");
@@ -123,7 +123,7 @@ describe("fixFlattenedMarkdown", () => {
 
   it("reformats flattened numbered lists with bold sub-bullets (Qwen analysis pattern)", () => {
     const input =
-      '**The Short Answer:** They are ring-fencing the high-margin AI business. **Why Split?** 1. **Valuation Arbitrage:** * **Digital InfraCo:** This is the sexy asset. 2. **Talent Retention:** * **NCS engineers:** They leave for startups. 3. **Capital Efficiency:** Separate funding paths.';
+      "**The Short Answer:** They are ring-fencing the high-margin AI business. **Why Split?** 1. **Valuation Arbitrage:** * **Digital InfraCo:** This is the sexy asset. 2. **Talent Retention:** * **NCS engineers:** They leave for startups. 3. **Capital Efficiency:** Separate funding paths.";
     const result = fixFlattenedMarkdown(input);
     expect(result).toContain("\n\n**Why Split?**");
     // Numbered items keep their bold content on the same line
@@ -137,15 +137,14 @@ describe("fixFlattenedMarkdown", () => {
 
   it("reformats flattened emoji headers with bold text", () => {
     const input =
-      '**⚠️ PORTFOLIO ALERT: ETH REBOUNDS** ETH recovered to **$1,813.90**. **What is happening:** * **Dead Cat Bounce?:** After hitting $1,815 price bounced back. * **Still Below Key Levels:** We are still well below the threshold.';
+      "**⚠️ PORTFOLIO ALERT: ETH REBOUNDS** ETH recovered to **$1,813.90**. **What is happening:** * **Dead Cat Bounce?:** After hitting $1,815 price bounced back. * **Still Below Key Levels:** We are still well below the threshold.";
     const result = fixFlattenedMarkdown(input);
     expect(result).toContain("\n* **Dead Cat Bounce?:**");
     expect(result).toContain("\n* **Still Below Key Levels:**");
   });
 
   it("does not alter already-formatted text", () => {
-    const input =
-      "**Summary:**\n- Item one\n- Item two\n\n**Details:**\n1. First\n2. Second";
+    const input = "**Summary:**\n- Item one\n- Item two\n\n**Details:**\n1. First\n2. Second";
     expect(fixFlattenedMarkdown(input)).toBe(input);
   });
 
@@ -162,7 +161,7 @@ describe("fixFlattenedMarkdown", () => {
 
   it("handles asterisk bullets after bold headers", () => {
     const input =
-      '**Key Points:** * **Alpha:** First point here * **Beta:** Second point * **Gamma:** Third point with more detail';
+      "**Key Points:** * **Alpha:** First point here * **Beta:** Second point * **Gamma:** Third point with more detail";
     const result = fixFlattenedMarkdown(input);
     expect(result).toContain("\n* **Alpha:**");
     expect(result).toContain("\n* **Beta:**");
@@ -183,7 +182,7 @@ describe("typing controller", () => {
     ] as const;
 
     for (const testCase of cases) {
-      const onReplyStart = vi.fn(async () => {});
+      const onReplyStart = vi.fn();
       const typing = createTypingController({
         onReplyStart,
         typingIntervalSeconds: 1,
@@ -193,7 +192,7 @@ describe("typing controller", () => {
       await typing.startTypingLoop();
       expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(1);
 
-      vi.advanceTimersByTime(2_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(3);
 
       if (testCase.first === "run") {
@@ -201,7 +200,7 @@ describe("typing controller", () => {
       } else {
         typing.markDispatchIdle();
       }
-      vi.advanceTimersByTime(2_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(5);
 
       if (testCase.second === "run") {
@@ -209,14 +208,14 @@ describe("typing controller", () => {
       } else {
         typing.markDispatchIdle();
       }
-      vi.advanceTimersByTime(2_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(5);
     }
   });
 
   it("does not start typing after run completion", async () => {
     vi.useFakeTimers();
-    const onReplyStart = vi.fn(async () => {});
+    const onReplyStart = vi.fn();
     const typing = createTypingController({
       onReplyStart,
       typingIntervalSeconds: 1,
@@ -225,13 +224,13 @@ describe("typing controller", () => {
 
     typing.markRunComplete();
     await typing.startTypingOnText("late text");
-    vi.advanceTimersByTime(2_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(onReplyStart).not.toHaveBeenCalled();
   });
 
   it("does not restart typing after it has stopped", async () => {
     vi.useFakeTimers();
-    const onReplyStart = vi.fn(async () => {});
+    const onReplyStart = vi.fn();
     const typing = createTypingController({
       onReplyStart,
       typingIntervalSeconds: 1,
@@ -244,12 +243,12 @@ describe("typing controller", () => {
     typing.markRunComplete();
     typing.markDispatchIdle();
 
-    vi.advanceTimersByTime(5_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(onReplyStart).toHaveBeenCalledTimes(1);
 
     // Late callbacks should be ignored and must not restart the interval.
     await typing.startTypingOnText("late tool result");
-    vi.advanceTimersByTime(5_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(onReplyStart).toHaveBeenCalledTimes(1);
   });
 });
