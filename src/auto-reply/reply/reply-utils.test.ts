@@ -201,7 +201,7 @@ describe("typing controller", () => {
         typing.markDispatchIdle();
       }
       await vi.advanceTimersByTimeAsync(2_000);
-      expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(5);
+      expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(testCase.first === "run" ? 3 : 5);
 
       if (testCase.second === "run") {
         typing.markRunComplete();
@@ -209,7 +209,7 @@ describe("typing controller", () => {
         typing.markDispatchIdle();
       }
       await vi.advanceTimersByTimeAsync(2_000);
-      expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(5);
+      expect(onReplyStart, testCase.name).toHaveBeenCalledTimes(testCase.first === "run" ? 3 : 5);
     }
   });
 
