@@ -51,24 +51,22 @@ var __exportAll = (all, no_symbols) => {
 export { __exportAll };
 HELPER_EOF
 
-# Redirect ALL imports of __exportAll from any pi-embedded chunk to __exportAll.js.
+# Redirect ALL imports of __exportAll from any chunk to __exportAll.js.
 # Uses find to cover subdirectories (plugin-sdk/, bundled/, etc.) and handles
-# both relative paths ("./pi-embedded-*" and "../pi-embedded-*").
+# both relative paths ("./chunk-*", "../reply-*", "./pi-embedded-*", etc.).
 COUNT=0
 while IFS= read -r f; do
+  # Skip __exportAll.js itself
+  [ "$(basename "$f")" = "__exportAll.js" ] && continue
   # Compute the relative path from the file's directory to $DIST_DIR/__exportAll.js
   FILE_DIR=$(dirname "$f")
   REL_PREFIX=$(python3 -c "import os.path; print(os.path.relpath('$DIST_DIR', '$FILE_DIR'))")
   REPLACEMENT="import { __exportAll } from \"${REL_PREFIX}/__exportAll.js\";"
-  # Replace any: import { XX as __exportAll } from "./pi-embedded-XXXX.js";
-  # or:          import { XX as __exportAll } from "../pi-embedded-XXXX.js";
-  if sed -i -E "s|import \{ [A-Za-z0-9_]+ as __exportAll \} from \"[^\"]*pi-embedded-[^\"]*\.js\";|${REPLACEMENT}|g" "$f"; then
-    # Verify the replacement actually changed the file
-    if ! grep -q 'pi-embedded.*__exportAll' "$f" 2>/dev/null; then
-      COUNT=$((COUNT + 1))
-      echo "  Fixed: $(basename "$f")"
-    fi
+  # Replace any: import { XX as __exportAll } from "./anything.js";
+  if sed -i -E "s|import \{ [A-Za-z0-9_]+ as __exportAll \} from \"[^\"]*\.js\";|${REPLACEMENT}|g" "$f"; then
+    COUNT=$((COUNT + 1))
+    echo "  Fixed: $(basename "$f")"
   fi
-done < <(grep -rl 'import.*__exportAll.*from.*pi-embedded' "$DIST_DIR" --include='*.js' 2>/dev/null || true)
+done < <(grep -rl 'as __exportAll' "$DIST_DIR" --include='*.js' 2>/dev/null || true)
 
 echo "Done: patched $COUNT files, created __exportAll.js"
