@@ -3,7 +3,7 @@ import type { GatewayMessageChannel } from "../../utils/message-channel.js";
 import { ACP_SPAWN_MODES, spawnAcpDirect } from "../acp-spawn.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import { SUBAGENT_SPAWN_MODES, spawnSubagentDirect } from "../subagent-spawn.js";
-import { jsonResult, readStringParam } from "./common.js";
+import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
 const SESSIONS_SPAWN_RUNTIMES = ["subagent", "acp"] as const;
 
