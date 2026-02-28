@@ -28,29 +28,53 @@ export type CreateFeishuReplyDispatcherParams = {
   runtime: RuntimeEnv;
   chatId: string;
   replyToMessageId?: string;
+  /** When true, preserve typing indicator on reply target but send messages without reply metadata */
+  skipReplyToInMessages?: boolean;
+  replyInThread?: boolean;
+  rootId?: string;
   mentionTargets?: MentionTarget[];
   accountId?: string;
 };
 
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams) {
   const core = getFeishuRuntime();
-  const { cfg, agentId, chatId, replyToMessageId, mentionTargets, accountId } = params;
+  const {
+    cfg,
+    agentId,
+    chatId,
+    replyToMessageId,
+    skipReplyToInMessages,
+    replyInThread,
+    rootId,
+    mentionTargets,
+    accountId,
+  } = params;
+  const sendReplyToMessageId = skipReplyToInMessages ? undefined : replyToMessageId;
   const account = resolveFeishuAccount({ cfg, accountId });
   const prefixContext = createReplyPrefixContext({ cfg, agentId });
 
   let typingState: TypingIndicatorState | null = null;
   const typingCallbacks = createTypingCallbacks({
     start: async () => {
+      // Check if typing indicator is enabled (default: true)
+      if (!(account.config.typingIndicator ?? true)) {
+        return;
+      }
       if (!replyToMessageId) {
         return;
       }
-      typingState = await addTypingIndicator({ cfg, messageId: replyToMessageId, accountId });
+      typingState = await addTypingIndicator({
+        cfg,
+        messageId: replyToMessageId,
+        accountId,
+        runtime: params.runtime,
+      });
     },
     stop: async () => {
       if (!typingState) {
         return;
       }
-      await removeTypingIndicator({ cfg, state: typingState, accountId });
+      await removeTypingIndicator({ cfg, state: typingState, accountId, runtime: params.runtime });
       typingState = null;
     },
     onStartError: (err) =>
@@ -100,7 +124,11 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         params.runtime.log?.(`feishu[${account.accountId}] ${message}`),
       );
       try {
-        await streaming.start(chatId, resolveReceiveIdType(chatId));
+        await streaming.start(chatId, resolveReceiveIdType(chatId), {
+          replyToMessageId,
+          replyInThread,
+          rootId,
+        });
       } catch (error) {
         params.runtime.error?.(`feishu: streaming start failed: ${String(error)}`);
         streaming = null;
@@ -170,7 +198,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             // Send media even when streaming handled the text
             if (hasMedia) {
               for (const mediaUrl of mediaList) {
-                await sendMediaFeishu({ cfg, to: chatId, mediaUrl, replyToMessageId, accountId });
+                await sendMediaFeishu({
+                  cfg,
+                  to: chatId,
+                  mediaUrl,
+                  replyToMessageId: sendReplyToMessageId,
+                  replyInThread,
+                  accountId,
+                });
               }
             }
             return;
@@ -187,7 +222,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 cfg,
                 to: chatId,
                 text: chunk,
-                replyToMessageId,
+                replyToMessageId: sendReplyToMessageId,
+                replyInThread,
                 mentions: first ? mentionTargets : undefined,
                 accountId,
               });
@@ -204,7 +240,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 cfg,
                 to: chatId,
                 text: chunk,
-                replyToMessageId,
+                replyToMessageId: sendReplyToMessageId,
+                replyInThread,
                 mentions: first ? mentionTargets : undefined,
                 accountId,
               });
@@ -215,7 +252,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
         if (hasMedia) {
           for (const mediaUrl of mediaList) {
-            await sendMediaFeishu({ cfg, to: chatId, mediaUrl, replyToMessageId, accountId });
+            await sendMediaFeishu({
+              cfg,
+              to: chatId,
+              mediaUrl,
+              replyToMessageId: sendReplyToMessageId,
+              replyInThread,
+              accountId,
+            });
           }
         }
       },
