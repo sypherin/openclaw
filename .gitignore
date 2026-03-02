@@ -104,7 +104,7 @@ dist/hooks/bundled/soul-evil/
 **/SOUL_EVIL.md
 /local/
 package-lock.json
-.claude/settings.local.json
+.claude/
 .agents/
 .agents
 .agent/

@@ -1,6 +1,5 @@
 import path from "node:path";
-import { checkConnection } from "../infra/net/connection-allowlist.js";
-import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
+import { fetchWithSsrFGuard, withStrictGuardedFetchMode } from "../infra/net/fetch-guard.js";
 import type { LookupFn, SsrFPolicy } from "../infra/net/ssrf.js";
 import { detectMime, extensionForMime } from "./mime.js";
 import { readResponseWithLimit } from "./read-response-with-limit.js";
@@ -92,29 +91,20 @@ export async function fetchRemoteMedia(options: FetchMediaOptions): Promise<Fetc
     lookupFn,
   } = options;
 
-  // SECURITY: Check connection allowlist before making request
-  // This prevents fetching from unauthorized external sources
-  const connectionCheck = checkConnection(url, "media-fetch");
-  if (!connectionCheck.allowed) {
-    throw new MediaFetchError(
-      "fetch_failed",
-      `Connection to ${connectionCheck.domain} blocked: ${connectionCheck.reason}. ` +
-        `Add to allowlist if this media source is expected.`,
-    );
-  }
-
   let res: Response;
   let finalUrl = url;
   let release: (() => Promise<void>) | null = null;
   try {
-    const result = await fetchWithSsrFGuard({
-      url,
-      fetchImpl,
-      init: requestInit,
-      maxRedirects,
-      policy: ssrfPolicy,
-      lookupFn,
-    });
+    const result = await fetchWithSsrFGuard(
+      withStrictGuardedFetchMode({
+        url,
+        fetchImpl,
+        init: requestInit,
+        maxRedirects,
+        policy: ssrfPolicy,
+        lookupFn,
+      }),
+    );
     res = result.response;
     finalUrl = result.finalUrl;
     release = result.release;

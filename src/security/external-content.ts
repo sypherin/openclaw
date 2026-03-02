@@ -11,48 +11,33 @@ import { randomBytes } from "node:crypto";
  */
 
 /**
- * Maximum content length to run suspicious pattern checks against.
- * Content exceeding this is wrapped as untrusted regardless — no need to scan.
- * This prevents ReDoS on very large inputs.
- */
-const SUSPICIOUS_PATTERN_MAX_INPUT_LENGTH = 10_000;
-
-/**
  * Patterns that may indicate prompt injection attempts.
  * These are logged for monitoring but content is still processed (wrapped safely).
- *
- * SECURITY: Patterns are written to avoid catastrophic backtracking (ReDoS):
- *   - No nested quantifiers (e.g. `(a+)+`)
- *   - `.*` replaced with `[^\n]{0,80}` to bound backtracking
- *   - `\s+` inside optional groups replaced with `\s{0,5}`
  */
 const SUSPICIOUS_PATTERNS = [
-  /ignore\s{1,5}(?:all\s{0,5})?(?:previous|prior|above)\s{1,5}(?:instructions?|prompts?)/i,
-  /disregard\s{1,5}(?:all\s{0,5})?(?:previous|prior|above)/i,
-  /forget\s{1,5}(?:everything|all|your)\s{1,5}(?:instructions?|rules?|guidelines?)/i,
-  /you\s{1,5}are\s{1,5}now\s{1,5}(?:a|an)\s/i,
-  /new\s{1,5}instructions?:/i,
-  /system\s{0,3}:?\s{0,3}(?:prompt|override|command)/i,
-  /\bexec\b[^\n]{0,80}command\s{0,3}=/i,
-  /elevated\s{0,3}=\s{0,3}true/i,
+  /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)/i,
+  /disregard\s+(all\s+)?(previous|prior|above)/i,
+  /forget\s+(everything|all|your)\s+(instructions?|rules?|guidelines?)/i,
+  /you\s+are\s+now\s+(a|an)\s+/i,
+  /new\s+instructions?:/i,
+  /system\s*:?\s*(prompt|override|command)/i,
+  /\bexec\b.*command\s*=/i,
+  /elevated\s*=\s*true/i,
   /rm\s+-rf/i,
-  /delete\s{1,5}all\s{1,5}(?:emails?|files?|data)/i,
+  /delete\s+all\s+(emails?|files?|data)/i,
   /<\/?system>/i,
-  /\]\s{0,5}\n\s{0,5}\[?(?:system|assistant|user)\]?:/i,
+  /\]\s*\n\s*\[?(system|assistant|user)\]?:/i,
+  /\[\s*(System\s*Message|System|Assistant|Internal)\s*\]/i,
+  /^\s*System:\s+/im,
 ];
 
 /**
  * Check if content contains suspicious patterns that may indicate injection.
  */
 export function detectSuspiciousPatterns(content: string): string[] {
-  // Cap input length to prevent ReDoS on very large content
-  const input =
-    content.length > SUSPICIOUS_PATTERN_MAX_INPUT_LENGTH
-      ? content.slice(0, SUSPICIOUS_PATTERN_MAX_INPUT_LENGTH)
-      : content;
   const matches: string[] = [];
   for (const pattern of SUSPICIOUS_PATTERNS) {
-    if (pattern.test(input)) {
+    if (pattern.test(content)) {
       matches.push(pattern.source);
     }
   }
@@ -133,6 +118,20 @@ const ANGLE_BRACKET_MAP: Record<number, string> = {
   0x27e9: ">", // mathematical right angle bracket
   0xfe64: "<", // small less-than sign
   0xfe65: ">", // small greater-than sign
+  0x00ab: "<", // left-pointing double angle quotation mark
+  0x00bb: ">", // right-pointing double angle quotation mark
+  0x300a: "<", // left double angle bracket
+  0x300b: ">", // right double angle bracket
+  0x27ea: "<", // mathematical left double angle bracket
+  0x27eb: ">", // mathematical right double angle bracket
+  0x27ec: "<", // mathematical left white tortoise shell bracket
+  0x27ed: ">", // mathematical right white tortoise shell bracket
+  0x27ee: "<", // mathematical left flattened parenthesis
+  0x27ef: ">", // mathematical right flattened parenthesis
+  0x276c: "<", // medium left-pointing angle bracket ornament
+  0x276d: ">", // medium right-pointing angle bracket ornament
+  0x276e: "<", // heavy left-pointing angle quotation mark ornament
+  0x276f: ">", // heavy right-pointing angle quotation mark ornament
 };
 
 function foldMarkerChar(char: string): string {
@@ -152,7 +151,7 @@ function foldMarkerChar(char: string): string {
 
 function foldMarkerText(input: string): string {
   return input.replace(
-    /[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E\u2329\u232A\u3008\u3009\u2039\u203A\u27E8\u27E9\uFE64\uFE65]/g,
+    /[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E\u2329\u232A\u3008\u3009\u2039\u203A\u27E8\u27E9\uFE64\uFE65\u00AB\u00BB\u300A\u300B\u27EA\u27EB\u27EC\u27ED\u27EE\u27EF\u276C\u276D\u276E\u276F]/g,
     (char) => foldMarkerChar(char),
   );
 }
