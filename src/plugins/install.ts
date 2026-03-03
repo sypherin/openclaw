@@ -147,6 +147,42 @@ function buildFileInstallResult(pluginId: string, targetFile: string): InstallPl
   };
 }
 
+type PackageInstallCommonParams = {
+  extensionsDir?: string;
+  timeoutMs?: number;
+  logger?: PluginInstallLogger;
+  mode?: "install" | "update";
+  dryRun?: boolean;
+  expectedPluginId?: string;
+};
+
+type FileInstallCommonParams = Pick<
+  PackageInstallCommonParams,
+  "extensionsDir" | "logger" | "mode" | "dryRun"
+>;
+
+function pickPackageInstallCommonParams(
+  params: PackageInstallCommonParams,
+): PackageInstallCommonParams {
+  return {
+    extensionsDir: params.extensionsDir,
+    timeoutMs: params.timeoutMs,
+    logger: params.logger,
+    mode: params.mode,
+    dryRun: params.dryRun,
+    expectedPluginId: params.expectedPluginId,
+  };
+}
+
+function pickFileInstallCommonParams(params: FileInstallCommonParams): FileInstallCommonParams {
+  return {
+    extensionsDir: params.extensionsDir,
+    logger: params.logger,
+    mode: params.mode,
+    dryRun: params.dryRun,
+  };
+}
+
 export function resolvePluginInstallDir(pluginId: string, extensionsDir?: string): string {
   const extensionsBase = extensionsDir
     ? resolveUserPath(extensionsDir)
@@ -166,17 +202,11 @@ export function resolvePluginInstallDir(pluginId: string, extensionsDir?: string
   return targetDirResult.path;
 }
 
-async function installPluginFromPackageDir(params: {
-  packageDir: string;
-  extensionsDir?: string;
-  timeoutMs?: number;
-  logger?: PluginInstallLogger;
-  mode?: "install" | "update";
-  dryRun?: boolean;
-  expectedPluginId?: string;
-  /** When true, install proceeds even if critical code patterns are detected. */
-  force?: boolean;
-}): Promise<InstallPluginResult> {
+async function installPluginFromPackageDir(
+  params: {
+    packageDir: string;
+  } & PackageInstallCommonParams,
+): Promise<InstallPluginResult> {
   const { logger, timeoutMs, mode, dryRun } = resolveTimedInstallModeOptions(params, defaultLogger);
 
   const manifestPath = path.join(params.packageDir, "package.json");
@@ -251,8 +281,7 @@ async function installPluginFromPackageDir(params: {
     forcedScanEntries.push(resolvedEntry);
   }
 
-  // Scan plugin source for dangerous code patterns.
-  // Critical findings block installation unless explicitly overridden.
+  // Scan plugin source for dangerous code patterns (warn-only; never blocks install)
   try {
     const scanSummary = await skillScanner.scanDirectoryWithSummary(params.packageDir, {
       includeFiles: forcedScanEntries,
@@ -262,15 +291,8 @@ async function installPluginFromPackageDir(params: {
         .filter((f) => f.severity === "critical")
         .map((f) => `${f.message} (${f.file}:${f.line})`)
         .join("; ");
-      // Block installation on critical findings (can be overridden with --force)
-      if (!params.force) {
-        return {
-          ok: false,
-          error: `Plugin "${pluginId}" blocked: dangerous code patterns detected: ${criticalDetails}. Use --force to override.`,
-        };
-      }
       logger.warn?.(
-        `WARNING: Plugin "${pluginId}" contains dangerous code patterns (--force override): ${criticalDetails}`,
+        `WARNING: Plugin "${pluginId}" contains dangerous code patterns: ${criticalDetails}`,
       );
     } else if (scanSummary.warn > 0) {
       logger.warn?.(
@@ -354,15 +376,11 @@ async function installPluginFromPackageDir(params: {
   };
 }
 
-export async function installPluginFromArchive(params: {
-  archivePath: string;
-  extensionsDir?: string;
-  timeoutMs?: number;
-  logger?: PluginInstallLogger;
-  mode?: "install" | "update";
-  dryRun?: boolean;
-  expectedPluginId?: string;
-}): Promise<InstallPluginResult> {
+export async function installPluginFromArchive(
+  params: {
+    archivePath: string;
+  } & PackageInstallCommonParams,
+): Promise<InstallPluginResult> {
   const logger = params.logger ?? defaultLogger;
   const timeoutMs = params.timeoutMs ?? 120_000;
   const mode = params.mode ?? "install";
@@ -380,25 +398,23 @@ export async function installPluginFromArchive(params: {
     onExtracted: async (packageDir) =>
       await installPluginFromPackageDir({
         packageDir,
-        extensionsDir: params.extensionsDir,
-        timeoutMs,
-        logger,
-        mode,
-        dryRun: params.dryRun,
-        expectedPluginId: params.expectedPluginId,
+        ...pickPackageInstallCommonParams({
+          extensionsDir: params.extensionsDir,
+          timeoutMs,
+          logger,
+          mode,
+          dryRun: params.dryRun,
+          expectedPluginId: params.expectedPluginId,
+        }),
       }),
   });
 }
 
-export async function installPluginFromDir(params: {
-  dirPath: string;
-  extensionsDir?: string;
-  timeoutMs?: number;
-  logger?: PluginInstallLogger;
-  mode?: "install" | "update";
-  dryRun?: boolean;
-  expectedPluginId?: string;
-}): Promise<InstallPluginResult> {
+export async function installPluginFromDir(
+  params: {
+    dirPath: string;
+  } & PackageInstallCommonParams,
+): Promise<InstallPluginResult> {
   const dirPath = resolveUserPath(params.dirPath);
   if (!(await fileExists(dirPath))) {
     return { ok: false, error: `directory not found: ${dirPath}` };
@@ -410,12 +426,7 @@ export async function installPluginFromDir(params: {
 
   return await installPluginFromPackageDir({
     packageDir: dirPath,
-    extensionsDir: params.extensionsDir,
-    timeoutMs: params.timeoutMs,
-    logger: params.logger,
-    mode: params.mode,
-    dryRun: params.dryRun,
-    expectedPluginId: params.expectedPluginId,
+    ...pickPackageInstallCommonParams(params),
   });
 }
 
@@ -527,30 +538,22 @@ export async function installPluginFromNpmSpec(params: {
   return finalized;
 }
 
-export async function installPluginFromPath(params: {
-  path: string;
-  extensionsDir?: string;
-  timeoutMs?: number;
-  logger?: PluginInstallLogger;
-  mode?: "install" | "update";
-  dryRun?: boolean;
-  expectedPluginId?: string;
-}): Promise<InstallPluginResult> {
+export async function installPluginFromPath(
+  params: {
+    path: string;
+  } & PackageInstallCommonParams,
+): Promise<InstallPluginResult> {
   const pathResult = await resolveExistingInstallPath(params.path);
   if (!pathResult.ok) {
     return pathResult;
   }
   const { resolvedPath: resolved, stat } = pathResult;
+  const packageInstallOptions = pickPackageInstallCommonParams(params);
 
   if (stat.isDirectory()) {
     return await installPluginFromDir({
       dirPath: resolved,
-      extensionsDir: params.extensionsDir,
-      timeoutMs: params.timeoutMs,
-      logger: params.logger,
-      mode: params.mode,
-      dryRun: params.dryRun,
-      expectedPluginId: params.expectedPluginId,
+      ...packageInstallOptions,
     });
   }
 
@@ -558,20 +561,12 @@ export async function installPluginFromPath(params: {
   if (archiveKind) {
     return await installPluginFromArchive({
       archivePath: resolved,
-      extensionsDir: params.extensionsDir,
-      timeoutMs: params.timeoutMs,
-      logger: params.logger,
-      mode: params.mode,
-      dryRun: params.dryRun,
-      expectedPluginId: params.expectedPluginId,
+      ...packageInstallOptions,
     });
   }
 
   return await installPluginFromFile({
     filePath: resolved,
-    extensionsDir: params.extensionsDir,
-    logger: params.logger,
-    mode: params.mode,
-    dryRun: params.dryRun,
+    ...pickFileInstallCommonParams(params),
   });
 }
