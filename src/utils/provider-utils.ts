@@ -31,5 +31,14 @@ export function isReasoningTagProvider(provider: string | undefined | null): boo
     return true;
   }
 
+  // NVIDIA NIM providers that emit <think> blocks in text stream
+  if (
+    normalized.includes("nvidia") ||
+    normalized === "nvidia-step" ||
+    normalized === "nvidia-kimi-k2"
+  ) {
+    return true;
+  }
+
   return false;
 }
