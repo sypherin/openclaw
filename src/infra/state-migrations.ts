@@ -1,28 +1,27 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { OpenClawConfig } from "../config/config.js";
-import type { SessionEntry } from "../config/sessions.js";
-import type { SessionScope } from "../config/sessions/types.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { OpenClawConfig } from "../config/config.js";
 import {
   resolveLegacyStateDirs,
   resolveNewStateDir,
   resolveOAuthDir,
   resolveStateDir,
 } from "../config/paths.js";
+import type { SessionEntry } from "../config/sessions.js";
 import { saveSessionStore } from "../config/sessions.js";
 import { canonicalizeMainSessionAlias } from "../config/sessions/main-session.js";
+import type { SessionScope } from "../config/sessions/types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-
-const log = createSubsystemLogger("state-migrations");
-
+import { resolveChannelAllowFromPath } from "../pairing/pairing-store.js";
 import {
   buildAgentMainSessionKey,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_MAIN_KEY,
   normalizeAgentId,
 } from "../routing/session-key.js";
+import { listTelegramAccountIds } from "../telegram/accounts.js";
 import { isWithinDir } from "./path-safety.js";
 import {
   ensureDir,
@@ -59,11 +58,16 @@ export type LegacyStateDetection = {
     hasLegacy: boolean;
   };
   pairingAllowFrom: {
-    legacyTelegramPath: string;
-    targetTelegramPath: string;
     hasLegacyTelegram: boolean;
+    copyPlans: FileCopyPlan[];
   };
   preview: string[];
+};
+
+type FileCopyPlan = {
+  label: string;
+  sourcePath: string;
+  targetPath: string;
 };
 
 type MigrationLogger = {
@@ -98,6 +102,30 @@ function isLegacyGroupKey(key: string): boolean {
     return true;
   }
   return false;
+}
+
+function buildFileCopyPreview(plan: FileCopyPlan): string {
+  return `- ${plan.label}: ${plan.sourcePath} → ${plan.targetPath}`;
+}
+
+async function runFileCopyPlans(
+  plans: FileCopyPlan[],
+): Promise<{ changes: string[]; warnings: string[] }> {
+  const changes: string[] = [];
+  const warnings: string[] = [];
+  for (const plan of plans) {
+    if (fileExists(plan.targetPath)) {
+      continue;
+    }
+    try {
+      ensureDir(path.dirname(plan.targetPath));
+      fs.copyFileSync(plan.sourcePath, plan.targetPath);
+      changes.push(`Copied ${plan.label} → ${plan.targetPath}`);
+    } catch (err) {
+      warnings.push(`Failed migrating ${plan.label} (${plan.sourcePath}): ${String(err)}`);
+    }
+  }
+  return { changes, warnings };
 }
 
 function canonicalizeSessionKeyForAgent(params: {
@@ -324,8 +352,8 @@ function removeDirIfEmpty(dir: string) {
   }
   try {
     fs.rmdirSync(dir);
-  } catch (err) {
-    log.debug("removeDirIfEmpty: failed to rmdir", { dir, error: String(err) });
+  } catch {
+    // ignore
   }
 }
 
@@ -352,8 +380,7 @@ function resolveSymlinkTarget(linkPath: string): string | null {
   try {
     const target = fs.readlinkSync(linkPath);
     return path.resolve(path.dirname(linkPath), target);
-  } catch (err) {
-    log.debug("resolveSymlinkTarget: failed to readlink", { linkPath, error: String(err) });
+  } catch {
     return null;
   }
 }
@@ -365,8 +392,7 @@ function formatStateDirMigration(legacyDir: string, targetDir: string): string {
 function isDirPath(filePath: string): boolean {
   try {
     return fs.statSync(filePath).isDirectory();
-  } catch (err) {
-    log.debug("isDirPath: stat failed", { filePath, error: String(err) });
+  } catch {
     return false;
   }
 }
@@ -375,8 +401,7 @@ function isLegacyTreeSymlinkMirror(currentDir: string, realTargetDir: string): b
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(currentDir, { withFileTypes: true });
-  } catch (err) {
-    log.debug("isLegacyTreeSymlinkMirror: readdir failed", { currentDir, error: String(err) });
+  } catch {
     return false;
   }
   if (entries.length === 0) {
@@ -388,8 +413,7 @@ function isLegacyTreeSymlinkMirror(currentDir: string, realTargetDir: string): b
     let stat: fs.Stats;
     try {
       stat = fs.lstatSync(entryPath);
-    } catch (err) {
-      log.debug("isLegacyTreeSymlinkMirror: lstat failed", { entryPath, error: String(err) });
+    } catch {
       return false;
     }
     if (stat.isSymbolicLink()) {
@@ -400,11 +424,7 @@ function isLegacyTreeSymlinkMirror(currentDir: string, realTargetDir: string): b
       let resolvedRealTarget: string;
       try {
         resolvedRealTarget = fs.realpathSync(resolvedTarget);
-      } catch (err) {
-        log.debug("isLegacyTreeSymlinkMirror: realpath failed", {
-          resolvedTarget,
-          error: String(err),
-        });
+      } catch {
         return false;
       }
       if (!isWithinDir(realTargetDir, resolvedRealTarget)) {
@@ -428,8 +448,7 @@ function isLegacyDirSymlinkMirror(legacyDir: string, targetDir: string): boolean
   let realTargetDir: string;
   try {
     realTargetDir = fs.realpathSync(targetDir);
-  } catch (err) {
-    log.debug("isLegacyDirSymlinkMirror: realpath failed", { targetDir, error: String(err) });
+  } catch {
     return false;
   }
   return isLegacyTreeSymlinkMirror(legacyDir, realTargetDir);
@@ -456,8 +475,7 @@ export async function autoMigrateLegacyStateDir(params: {
   let legacyDir = legacyDirs.find((dir) => {
     try {
       return fs.existsSync(dir);
-    } catch (err) {
-      log.debug("autoMigrateLegacyStateDir: existsSync failed", { dir, error: String(err) });
+    } catch {
       return false;
     }
   });
@@ -467,8 +485,7 @@ export async function autoMigrateLegacyStateDir(params: {
   let legacyStat: fs.Stats | null = null;
   try {
     legacyStat = legacyDir ? fs.lstatSync(legacyDir) : null;
-  } catch (err) {
-    log.debug("autoMigrateLegacyStateDir: lstat failed", { legacyDir, error: String(err) });
+  } catch {
     legacyStat = null;
   }
   if (!legacyStat) {
@@ -495,11 +512,7 @@ export async function autoMigrateLegacyStateDir(params: {
       legacyDir = legacyTarget;
       try {
         legacyStat = fs.lstatSync(legacyDir);
-      } catch (err) {
-        log.debug("autoMigrateLegacyStateDir: lstat after symlink resolution failed", {
-          legacyDir,
-          error: String(err),
-        });
+      } catch {
         legacyStat = null;
       }
       if (!legacyStat) {
@@ -635,13 +648,25 @@ export async function detectLegacyStateMigrations(params: {
   const hasLegacyWhatsAppAuth =
     fileExists(path.join(oauthDir, "creds.json")) &&
     !fileExists(path.join(targetWhatsAppAuthDir, "creds.json"));
-  const legacyTelegramAllowFromPath = path.join(oauthDir, "telegram-allowFrom.json");
-  const targetTelegramAllowFromPath = path.join(
-    oauthDir,
-    `telegram-${DEFAULT_ACCOUNT_ID}-allowFrom.json`,
-  );
-  const hasLegacyTelegramAllowFrom =
-    fileExists(legacyTelegramAllowFromPath) && !fileExists(targetTelegramAllowFromPath);
+  const legacyTelegramAllowFromPath = resolveChannelAllowFromPath("telegram", env);
+  const telegramPairingAllowFromPlans = fileExists(legacyTelegramAllowFromPath)
+    ? Array.from(
+        new Set(
+          listTelegramAccountIds(params.cfg).map((accountId) =>
+            resolveChannelAllowFromPath("telegram", env, accountId),
+          ),
+        ),
+      )
+        .filter((targetPath) => !fileExists(targetPath))
+        .map(
+          (targetPath): FileCopyPlan => ({
+            label: "Telegram pairing allowFrom",
+            sourcePath: legacyTelegramAllowFromPath,
+            targetPath,
+          }),
+        )
+    : [];
+  const hasLegacyTelegramAllowFrom = telegramPairingAllowFromPlans.length > 0;
 
   const preview: string[] = [];
   if (hasLegacySessions) {
@@ -657,9 +682,7 @@ export async function detectLegacyStateMigrations(params: {
     preview.push(`- WhatsApp auth: ${oauthDir} → ${targetWhatsAppAuthDir} (keep oauth.json)`);
   }
   if (hasLegacyTelegramAllowFrom) {
-    preview.push(
-      `- Telegram pairing allowFrom: ${legacyTelegramAllowFromPath} → ${targetTelegramAllowFromPath}`,
-    );
+    preview.push(...telegramPairingAllowFromPlans.map(buildFileCopyPreview));
   }
 
   return {
@@ -687,9 +710,8 @@ export async function detectLegacyStateMigrations(params: {
       hasLegacy: hasLegacyWhatsAppAuth,
     },
     pairingAllowFrom: {
-      legacyTelegramPath: legacyTelegramAllowFromPath,
-      targetTelegramPath: targetTelegramAllowFromPath,
       hasLegacyTelegram: hasLegacyTelegramAllowFrom,
+      copyPlans: telegramPairingAllowFromPlans,
     },
     preview,
   };
@@ -803,11 +825,8 @@ async function migrateLegacySessions(
       if (fileExists(detected.sessions.legacyStorePath)) {
         fs.rmSync(detected.sessions.legacyStorePath, { force: true });
       }
-    } catch (err) {
-      log.debug("migrateLegacySessions: failed to remove legacy store", {
-        path: detected.sessions.legacyStorePath,
-        error: String(err),
-      });
+    } catch {
+      // ignore
     }
   }
 
@@ -818,11 +837,8 @@ async function migrateLegacySessions(
     try {
       fs.renameSync(detected.sessions.legacyDir, backupDir);
       warnings.push(`Left legacy sessions at ${backupDir}`);
-    } catch (err) {
-      log.debug("migrateLegacySessions: failed to backup legacy sessions dir", {
-        backupDir,
-        error: String(err),
-      });
+    } catch {
+      // ignore
     }
   }
 
@@ -921,18 +937,7 @@ async function migrateLegacyTelegramPairingAllowFrom(
   if (!detected.pairingAllowFrom.hasLegacyTelegram) {
     return { changes, warnings };
   }
-
-  const legacyPath = detected.pairingAllowFrom.legacyTelegramPath;
-  const targetPath = detected.pairingAllowFrom.targetTelegramPath;
-  try {
-    ensureDir(path.dirname(targetPath));
-    fs.copyFileSync(legacyPath, targetPath);
-    changes.push(`Copied Telegram pairing allowFrom → ${targetPath}`);
-  } catch (err) {
-    warnings.push(`Failed migrating Telegram pairing allowFrom (${legacyPath}): ${String(err)}`);
-  }
-
-  return { changes, warnings };
+  return await runFileCopyPlans(detected.pairingAllowFrom.copyPlans);
 }
 
 export async function runLegacyStateMigrations(params: {

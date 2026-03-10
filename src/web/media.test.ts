@@ -16,27 +16,16 @@ import {
   optimizeImageToJpeg,
 } from "./media.js";
 
-vi.mock("../infra/net/connection-allowlist.js", () => ({
-  checkConnection: (_url: string, _source?: string) => {
-    let domain = "unknown";
-    try {
-      domain = new URL(_url).hostname;
-    } catch {}
-    return {
-      id: "test",
-      url: _url,
-      domain,
-      port: 443,
-      protocol: "https:",
-      allowed: true,
-      reason: "test_bypass",
-      timestamp: Date.now(),
-    };
-  },
-  getConnectionAllowlist: () => ({
-    check: (_url: string) => ({ allowed: true, reason: "test_bypass" }),
-  }),
-}));
+const convertHeicToJpegMock = vi.fn();
+
+vi.mock("../media/image-ops.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../media/image-ops.js")>("../media/image-ops.js");
+  return {
+    ...actual,
+    convertHeicToJpeg: (...args: unknown[]) => convertHeicToJpegMock(...args),
+  };
+});
 
 let fixtureRoot = "";
 let fixtureFileCount = 0;
@@ -45,6 +34,7 @@ let largeJpegFile = "";
 let tinyPngBuffer: Buffer;
 let tinyPngFile = "";
 let tinyPngWrongExtFile = "";
+let fakeHeicFile = "";
 let alphaPngBuffer: Buffer;
 let alphaPngFile = "";
 let fallbackPngBuffer: Buffer;
@@ -98,6 +88,7 @@ beforeAll(async () => {
     .toBuffer();
   tinyPngFile = await writeTempFile(tinyPngBuffer, ".png");
   tinyPngWrongExtFile = await writeTempFile(tinyPngBuffer, ".bin");
+  fakeHeicFile = await writeTempFile(Buffer.from("fake-heic"), ".heic");
   alphaPngBuffer = await sharp({
     create: {
       width: 64,
@@ -198,6 +189,22 @@ describe("web media loading", () => {
 
     expect(result.kind).toBe("image");
     expect(result.contentType).toBe("image/jpeg");
+  });
+
+  it("normalizes HEIC local files to JPEG output", async () => {
+    convertHeicToJpegMock.mockResolvedValueOnce(tinyPngBuffer);
+
+    const result = await loadWebMedia(fakeHeicFile, 1024 * 1024);
+
+    expect(convertHeicToJpegMock).toHaveBeenCalledTimes(1);
+    expect(result.kind).toBe("image");
+    expect(result.contentType).toBe("image/jpeg");
+    expect(result.fileName).toBe(path.basename(fakeHeicFile, ".heic") + ".jpg");
+    expect(result.buffer.length).toBeGreaterThan(0);
+    expect(result.buffer.equals(tinyPngBuffer)).toBe(false);
+    // Confirm the output is actually JPEG (magic bytes 0xFF 0xD8)
+    expect(result.buffer[0]).toBe(0xff);
+    expect(result.buffer[1]).toBe(0xd8);
   });
 
   it("includes URL + status in fetch errors", async () => {
@@ -450,7 +457,7 @@ describe("local media root guard", () => {
       }),
     ).resolves.toEqual(
       expect.objectContaining({
-        kind: "unknown",
+        kind: undefined,
       }),
     );
 
@@ -461,7 +468,7 @@ describe("local media root guard", () => {
       }),
     ).resolves.toEqual(
       expect.objectContaining({
-        kind: "unknown",
+        kind: undefined,
       }),
     );
   });
@@ -491,7 +498,7 @@ describe("local media root guard", () => {
       }),
     ).resolves.toEqual(
       expect.objectContaining({
-        kind: "unknown",
+        kind: undefined,
       }),
     );
   });

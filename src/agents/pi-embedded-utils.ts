@@ -10,30 +10,6 @@ export function isAssistantMessage(msg: AgentMessage | undefined): msg is Assist
 }
 
 /**
- * Strip malformed GLM/Qwen-style <tool_call> XML that leaks into text content.
- * Some models (GLM5, Qwen) emit tool invocations as XML-like tags in plain text
- * instead of using proper OpenAI function calling format. This removes:
- * - <tool_call>...</tool_call> blocks (well-formed)
- * - <tool_call>...  with unclosed tags (malformed, up to end-of-text or </think>)
- */
-export function stripGlmToolCallXml(text: string): string {
-  if (!text) {
-    return text;
-  }
-  if (!/<tool_call>/i.test(text)) {
-    return text;
-  }
-
-  // Remove well-formed <tool_call>...</tool_call> blocks.
-  let cleaned = text.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "");
-
-  // Remove malformed <tool_call> without matching close tag (rest of text).
-  cleaned = cleaned.replace(/<tool_call>[\s\S]*/gi, "");
-
-  return cleaned.trim();
-}
-
-/**
  * Strip malformed Minimax tool invocations that leak into text content.
  * Minimax sometimes embeds tool calls as XML in text blocks instead of
  * proper structured tool calls. This removes:
@@ -55,6 +31,32 @@ export function stripMinimaxToolCallXml(text: string): string {
   cleaned = cleaned.replace(/<\/?minimax:tool_call>/gi, "");
 
   return cleaned;
+}
+
+/**
+ * Strip model control tokens leaked into assistant text output.
+ *
+ * Models like GLM-5 and DeepSeek sometimes emit internal delimiter tokens
+ * (e.g. `<|assistant|>`, `<|tool_call_result_begin|>`, `<｜begin▁of▁sentence｜>`)
+ * in their responses. These use the universal `<|...|>` convention (ASCII or
+ * full-width pipe variants) and should never reach end users.
+ *
+ * This is a provider bug — no upstream fix tracked yet.
+ * Remove this function when upstream providers stop leaking tokens.
+ * @see https://github.com/openclaw/openclaw/issues/40020
+ */
+// Match both ASCII pipe <|...|> and full-width pipe <｜...｜> (U+FF5C) variants.
+const MODEL_SPECIAL_TOKEN_RE = /<[|｜][^|｜]*[|｜]>/g;
+
+export function stripModelSpecialTokens(text: string): string {
+  if (!text) {
+    return text;
+  }
+  if (!MODEL_SPECIAL_TOKEN_RE.test(text)) {
+    return text;
+  }
+  MODEL_SPECIAL_TOKEN_RE.lastIndex = 0;
+  return text.replace(MODEL_SPECIAL_TOKEN_RE, " ").replace(/  +/g, " ").trim();
 }
 
 /**
@@ -223,44 +225,6 @@ export function stripDowngradedToolCallText(text: string): string {
 }
 
 /**
- * Strip leaked shell commands that some models (Qwen, GLM) output as plain text
- * instead of routing through the `exec` tool. Common patterns include:
- * - `timeout 180 claude -p "..."` (Claude Code CLI invocations)
- * - `CLAUDECODE= claude -p "..."`  (env-unset Claude Code invocations)
- * - Lines that are purely a shell command with no surrounding prose
- */
-export function stripLeakedShellCommands(text: string): string {
-  if (!text) {
-    return text;
-  }
-  // Quick bailout: only apply if text contains strong shell-command indicators.
-  if (!/\bclaude\s+-p\b/i.test(text) && !/\btimeout\s+\d+\s+/i.test(text)) {
-    return text;
-  }
-
-  // Remove lines that are purely shell command invocations (no surrounding prose).
-  // These patterns match standalone command lines that models dump as text.
-  const shellPatterns = [
-    // `timeout <N> claude -p "..."` or `timeout <N> CLAUDECODE= claude -p "..."`
-    /^[ \t]*timeout\s+\d+\s+(?:CLAUDECODE=\s*)?claude\s+-p\b.*$/gim,
-    // `CLAUDECODE= claude -p "..."` without timeout
-    /^[ \t]*CLAUDECODE=\s*claude\s+-p\b.*$/gim,
-    // Bare `claude -p "..."` on its own line (not inside prose)
-    /^[ \t]*claude\s+-p\s+["'].*$/gim,
-  ];
-
-  let cleaned = text;
-  for (const pattern of shellPatterns) {
-    cleaned = cleaned.replace(pattern, "");
-  }
-
-  // Collapse excessive blank lines left behind.
-  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
-
-  return cleaned.trim();
-}
-
-/**
  * Strip thinking tags and their content from text.
  * This is a safety net for cases where the model outputs <think> tags
  * that slip through other filtering mechanisms.
@@ -274,9 +238,7 @@ export function extractAssistantText(msg: AssistantMessage): string {
     extractTextFromChatContent(msg.content, {
       sanitizeText: (text) =>
         stripThinkingTagsFromText(
-          stripLeakedShellCommands(
-            stripDowngradedToolCallText(stripGlmToolCallXml(stripMinimaxToolCallXml(text))),
-          ),
+          stripDowngradedToolCallText(stripModelSpecialTokens(stripMinimaxToolCallXml(text))),
         ).trim(),
       joinWith: "\n",
       normalizeText: (text) => text.trim(),
