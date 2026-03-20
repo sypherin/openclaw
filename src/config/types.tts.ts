@@ -1,6 +1,6 @@
 import type { SecretInput } from "./types.secrets.js";
 
-export type TtsProvider = "elevenlabs" | "openai" | "edge" | "gemini";
+export type TtsProvider = string;
 
 export type TtsMode = "final" | "all";
 
@@ -66,9 +66,9 @@ export type TtsConfig = {
     /** System-level instructions for the TTS model (gpt-4o-mini-tts only). */
     instructions?: string;
   };
-  /** Microsoft Edge (node-edge-tts) configuration. */
+  /** Legacy alias for Microsoft speech configuration. */
   edge?: {
-    /** Explicitly allow Edge TTS usage (no API key required). */
+    /** Explicitly allow Microsoft speech usage (no API key required). */
     enabled?: boolean;
     voice?: string;
     lang?: string;
@@ -80,12 +80,18 @@ export type TtsConfig = {
     proxy?: string;
     timeoutMs?: number;
   };
-  /** Google Gemini TTS configuration. */
-  gemini?: {
-    apiKey?: string;
-    model?: string;
+  /** Preferred alias for Microsoft speech configuration. */
+  microsoft?: {
+    enabled?: boolean;
     voice?: string;
-    instructions?: string;
+    lang?: string;
+    outputFormat?: string;
+    pitch?: string;
+    rate?: string;
+    volume?: string;
+    saveSubtitles?: boolean;
+    proxy?: string;
+    timeoutMs?: number;
   };
   /** Optional path for local TTS user preferences JSON. */
   prefsPath?: string;
