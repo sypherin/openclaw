@@ -653,6 +653,7 @@ export class GatewayClient {
     try {
       const parsed = JSON.parse(raw);
       if (validateEventFrame(parsed)) {
+        this.lastTick = Date.now();
         const evt = parsed;
         if (evt.event === "connect.challenge") {
           const payload = evt.payload as { nonce?: unknown } | undefined;
@@ -680,6 +681,7 @@ export class GatewayClient {
         return;
       }
       if (validateResponseFrame(parsed)) {
+        this.lastTick = Date.now();
         const pending = this.pending.get(parsed.id);
         if (!pending) {
           return;
